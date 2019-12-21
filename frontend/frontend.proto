@@ -1,10 +1,10 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "edgekv.client.main";
-option java_outer_classname = "FrontEndProto";
+option java_package = "edgekv.frontend";
+option java_outer_classname = "FrontendProto";
 
-package main;
+package frontend;
 
 service Frontend {
     rpc Get(GetRequest) returns (GetResponse) {}
