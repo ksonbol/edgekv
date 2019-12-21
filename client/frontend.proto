@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "edgekv.client.main";
+option java_outer_classname = "FrontEndProto";
+
+package main;
+
+service Frontend {
+    rpc Get(GetRequest) returns (GetResponse) {}
+
+    rpc Put(PutRequest) returns (PutResponse) {}
+
+    rpc Del(DeleteRequest) returns (DeleteResponse) {}
+}
+
+message GetRequest {
+    required string key = 1;
+    required bool type = 2;
+}
+
+message GetResponse {
+    required string data = 1;
+    required int32 size = 2;
+}
+
+message PutRequest {
+    required string key = 1;
+    string value = 2;
+    required bool type = 3;
+}
+
+message PutResponse {
+    required int32 status = 1;
+}
+
+message DeleteRequest {
+    required string key = 1;
+}
+
+message DeleteResponse {
+    required int32 status = 1;
+}
