@@ -20,7 +20,7 @@ message GetRequest {
 }
 
 message GetResponse {
-    string data = 1;
+    string value = 1;
     int32 size = 2;
 }
 
