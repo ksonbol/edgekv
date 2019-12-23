@@ -8,15 +8,20 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/testdata"
 )
 
 var (
-	serverAddr = flag.String("server_addr", "localhost:2379", "The server address in the format of host:port")
+	tls                = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
+	caFile             = flag.String("ca_file", "", "The file containing the CA root cert file")
+	serverAddr         = flag.String("server_addr", "localhost:2379", "The server address in the format of host:port")
+	serverHostOverride = flag.String("server_host_override", "x.test.youtube.com", "The server name use to verify the hostname returned by TLS handshake")
 )
 
 const (
-	LOCALDATA  = true
-	GLOBALDATA = false
+	localdata  = true
+	globaldata = false
 )
 
 func get(client pb.FrontendClient, req *pb.GetRequest) {
@@ -63,8 +68,22 @@ func del(client pb.FrontendClient, req *pb.DeleteRequest) {
 	}
 }
 
+// run with flag -serveraddress=localhost:PORT, default is localhost:2379
 func main() {
+	flag.Parse()
 	var opts []grpc.DialOption
+	if *tls {
+		if *caFile == "" {
+			*caFile = testdata.Path("ca.pem")
+		}
+		creds, err := credentials.NewClientTLSFromFile(*caFile, *serverHostOverride)
+		if err != nil {
+			log.Fatalf("Failed to create TLS credentials %v", err)
+		}
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithInsecure())
+	}
 	opts = append(opts, grpc.WithBlock())
 	conn, err := grpc.Dial(*serverAddr, opts...)
 	if err != nil {
@@ -73,5 +92,5 @@ func main() {
 	defer conn.Close()
 	client := pb.NewFrontendClient(conn)
 
-	get(client, &pb.GetRequest{Key: "10", Type: LOCALDATA})
+	get(client, &pb.GetRequest{Key: "10", Type: localdata})
 }
