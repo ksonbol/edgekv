@@ -24,14 +24,11 @@ const (
 	globaldata = false
 )
 
-func get(client pb.FrontendClient, req *pb.GetRequest) *pb.GetResponse {
+func get(client pb.FrontendClient, req *pb.GetRequest) (*pb.GetResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	res, err := client.Get(ctx, req)
-	if err != nil {
-		log.Fatalf("%v.Get(_) = _, %v: ", client, err)
-	}
-	return res
+	return res, err
 }
 
 func put(client pb.FrontendClient, req *pb.PutRequest) *pb.PutResponse {
@@ -78,8 +75,12 @@ func main() {
 	defer conn.Close()
 	client := pb.NewFrontendClient(conn)
 
-	getRes := get(client, &pb.GetRequest{Key: "10", Type: localdata})
-	log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+	getRes, err := get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	if err != nil {
+		log.Printf("Get Error, %v", err)
+	} else {
+		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+	}
 
 	putRes := put(client, &pb.PutRequest{Key: "10", Type: localdata, Value: "val"})
 	st := putRes.GetStatus()
@@ -88,6 +89,13 @@ func main() {
 		log.Println("Put operation completed successfully.")
 	case -1:
 		log.Printf("Put operation failed.\n")
+	}
+
+	getRes, err = get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	if err != nil {
+		log.Printf("Get Error, %v", err)
+	} else {
+		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
 	}
 
 	delRes := del(client, &pb.DeleteRequest{Key: "10", Type: localdata})
@@ -100,4 +108,12 @@ func main() {
 	case -1:
 		log.Printf("Delete operation failed.\n")
 	}
+
+	getRes, err = get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	if err != nil {
+		log.Printf("Get Error, %v", err)
+	} else {
+		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+	}
+
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	pb "edgekv/frontend"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -22,30 +23,60 @@ var (
 	port     = flag.Int("port", 10000, "The server port")
 )
 
+const (
+	localdata  = true
+	globaldata = false
+)
+
 //
 type frontendServer struct {
 	pb.UnimplementedFrontendServer
-
-	mu sync.Mutex
+	kvLocal  map[string]string
+	kvGlobal map[string]string
+	mu       sync.Mutex
 }
 
 // Get returns the Value at the specified key and data type
 func (s *frontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	return &pb.GetResponse{Value: "dummy value", Size: 64}, nil
+	var val string
+	var exists bool
+	var err error
+	switch req.GetType() {
+	case localdata:
+		val, exists = s.kvLocal[req.GetKey()]
+	case globaldata:
+		val, exists = s.kvGlobal[req.GetKey()]
+	}
+	if !exists {
+		err = errors.New("Key does not exist")
+	}
+	return &pb.GetResponse{Value: val, Size: int32(len(val))}, err
 }
 
 // Put stores the Value at the specified key and data type
 func (s *frontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
+	switch req.GetType() {
+	case localdata:
+		s.kvLocal[req.GetKey()] = req.GetValue()
+	case globaldata:
+		s.kvGlobal[req.GetKey()] = req.GetValue()
+	}
 	return &pb.PutResponse{Status: 0}, nil
 }
 
 // Del deletes the key-value pair
 func (s *frontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	switch req.GetType() {
+	case localdata:
+		delete(s.kvLocal, req.GetKey())
+	case globaldata:
+		delete(s.kvGlobal, req.GetKey())
+	}
 	return &pb.DeleteResponse{Status: 0}, nil
 }
 
 func newServer() *frontendServer {
-	s := &frontendServer{}
+	s := &frontendServer{kvLocal: make(map[string]string)}
 	return s
 }
 
