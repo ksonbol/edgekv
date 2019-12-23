@@ -4,6 +4,9 @@ option java_multiple_files = true;
 option java_package = "edgekv.frontend";
 option java_outer_classname = "FrontendProto";
 
+// Compile this file with:
+// protoc -I frontend/ frontend/frontend.proto --go_out=plugins=grpc:frontend
+
 package frontend;
 
 service Frontend {
@@ -36,6 +39,7 @@ message PutResponse {
 
 message DeleteRequest {
     string key = 1;
+    bool type = 2;
 }
 
 message DeleteResponse {
