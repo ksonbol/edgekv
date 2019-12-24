@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	pb "edgekv/frontend"
+	"edgekv/utils"
 	"flag"
 	"log"
 	"time"
@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/testdata"
+
+	pb "edgekv/frontend/frontend"
 )
 
 var (
@@ -19,36 +21,34 @@ var (
 	serverHostOverride = flag.String("server_host_override", "x.test.youtube.com", "The server name use to verify the hostname returned by TLS handshake")
 )
 
-const (
-	localdata  = true
-	globaldata = false
-)
-
-func get(client pb.FrontendClient, req *pb.GetRequest) (*pb.GetResponse, error) {
+// Get the value associated with a key and data type from kv store
+func Get(client pb.FrontendClient, req *pb.GetRequest) (*pb.GetResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	res, err := client.Get(ctx, req)
 	return res, err
 }
 
-func put(client pb.FrontendClient, req *pb.PutRequest) *pb.PutResponse {
+// Put Add a new key-value pair
+func Put(client pb.FrontendClient, req *pb.PutRequest) (*pb.PutResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	res, err := client.Put(ctx, req)
 	if err != nil {
 		log.Fatalf("%v.Put(_) = _, %v: ", client, err)
 	}
-	return res
+	return res, nil
 }
 
-func del(client pb.FrontendClient, req *pb.DeleteRequest) *pb.DeleteResponse {
+// Del delete key from server's key-value store
+func Del(client pb.FrontendClient, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	res, err := client.Del(ctx, req)
 	if err != nil {
 		log.Fatalf("%v.Del(_) = _, %v: ", client, err)
 	}
-	return res
+	return res, nil
 }
 
 // run with flag -serveraddress=localhost:PORT, default is localhost:2379
@@ -75,14 +75,14 @@ func main() {
 	defer conn.Close()
 	client := pb.NewFrontendClient(conn)
 
-	getRes, err := get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	getRes, err := Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
 	if err != nil {
 		log.Printf("Get Error, %v", err)
 	} else {
 		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
 	}
 
-	putRes := put(client, &pb.PutRequest{Key: "10", Type: localdata, Value: "val"})
+	putRes, _ := Put(client, &pb.PutRequest{Key: "10", Type: utils.LocalData, Value: "val"})
 	st := putRes.GetStatus()
 	switch st {
 	case 0:
@@ -91,14 +91,14 @@ func main() {
 		log.Printf("Put operation failed.\n")
 	}
 
-	getRes, err = get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	getRes, err = Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
 	if err != nil {
 		log.Printf("Get Error, %v", err)
 	} else {
 		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
 	}
 
-	delRes := del(client, &pb.DeleteRequest{Key: "10", Type: localdata})
+	delRes, _ := Del(client, &pb.DeleteRequest{Key: "10", Type: utils.LocalData})
 	st = delRes.GetStatus()
 	switch st {
 	case 0:
@@ -109,7 +109,7 @@ func main() {
 		log.Printf("Delete operation failed.\n")
 	}
 
-	getRes, err = get(client, &pb.GetRequest{Key: "10", Type: localdata})
+	getRes, err = Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
 	if err != nil {
 		log.Printf("Get Error, %v", err)
 	} else {

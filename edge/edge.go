@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	pb "edgekv/frontend"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +12,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/testdata"
+
+	pb "edgekv/frontend"
+	"edgekv/utils"
 )
 
 var (
@@ -21,11 +23,6 @@ var (
 	keyFile  = flag.String("key_file", "", "The TLS key file")
 	hostname = flag.String("hostname", "localhost", "The server hostname or public IP address")
 	port     = flag.Int("port", 10000, "The server port")
-)
-
-const (
-	localdata  = true
-	globaldata = false
 )
 
 //
@@ -42,9 +39,9 @@ func (s *frontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 	var exists bool
 	var err error
 	switch req.GetType() {
-	case localdata:
+	case utils.LocalData:
 		val, exists = s.kvLocal[req.GetKey()]
-	case globaldata:
+	case utils.GlobalData:
 		val, exists = s.kvGlobal[req.GetKey()]
 	}
 	if !exists {
@@ -56,9 +53,9 @@ func (s *frontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 // Put stores the Value at the specified key and data type
 func (s *frontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
 	switch req.GetType() {
-	case localdata:
+	case utils.LocalData:
 		s.kvLocal[req.GetKey()] = req.GetValue()
-	case globaldata:
+	case utils.GlobalData:
 		s.kvGlobal[req.GetKey()] = req.GetValue()
 	}
 	return &pb.PutResponse{Status: 0}, nil
@@ -67,9 +64,9 @@ func (s *frontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 // Del deletes the key-value pair
 func (s *frontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	switch req.GetType() {
-	case localdata:
+	case utils.LocalData:
 		delete(s.kvLocal, req.GetKey())
-	case globaldata:
+	case utils.GlobalData:
 		delete(s.kvGlobal, req.GetKey())
 	}
 	return &pb.DeleteResponse{Status: 0}, nil
