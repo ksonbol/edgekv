@@ -4,8 +4,12 @@ import (
 	"context"
 	"edgekv/utils"
 	"flag"
+	"fmt"
 	"log"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -51,8 +55,72 @@ func Del(client pb.FrontendClient, req *pb.DeleteRequest) (*pb.DeleteResponse, e
 	return res, nil
 }
 
-// run with flag -serveraddress=localhost:PORT, default is localhost:2379
-func main() {
+// Functions to use in the benchmark
+
+// get just send the value or error to stdout
+// TODO: return value instead and use it in benchmark
+func get(client pb.FrontendClient, dataT bool, key string) (string, error) {
+	var val string
+	var returnErr error
+	getRes, err := Get(client, &pb.GetRequest{Key: key, Type: dataT})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			code := st.Code()
+			if code == codes.NotFound {
+				fmt.Printf("Key not found: %v\n", err)
+			}
+		} else {
+			fmt.Println(err)
+		}
+	} else {
+		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+	}
+	return val, returnErr
+}
+
+// put just prints the output or error to stdout
+// TODO: return value instead and use it in benchmark
+func put(client pb.FrontendClient, dataT bool, key string, val string) (int32, error) {
+	var returnSt int32
+	var returnErr error
+	putRes, err := Put(client, &pb.PutRequest{Key: key, Type: dataT, Value: val})
+	st := putRes.GetStatus()
+	if err != nil {
+		log.Printf("Put operation failed: %v", err)
+	} else {
+		switch st {
+		case utils.KVAddedOrUpdated:
+			log.Println("Put operation completed successfully.")
+		case utils.UnknownError:
+			log.Printf("Put operation failed: %v.\n", err)
+		}
+	}
+	return returnSt, returnErr
+}
+
+// put just prints the output or error to stdout
+// TODO: return value instead and use it in benchmark
+func del(client pb.FrontendClient, dataT bool, key string) (int32, error) {
+	var returnSt int32
+	var returnErr error
+	delRes, err := Del(client, &pb.DeleteRequest{Key: key, Type: dataT})
+	st := delRes.GetStatus()
+	if err != nil {
+		log.Printf("Delete operation failed: %v", err)
+	} else {
+		switch st {
+		case utils.KVDeleted:
+			log.Println("Delete operation completed successfully.")
+		case utils.KeyNotFound:
+			log.Println("Delete failed: could not find key.")
+		case utils.UnknownError:
+			log.Printf("Delete operation failed., %v\n", err)
+		}
+	}
+	return returnSt, returnErr
+}
+
+func getConnectionToServer() *grpc.ClientConn {
 	flag.Parse()
 	var opts []grpc.DialOption
 	if *tls {
@@ -72,48 +140,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("fail to dial: %v", err)
 	}
+	return conn
+}
+
+// run with flag -serveraddress=localhost:PORT, default is localhost:2379
+func main() {
+	conn := getConnectionToServer()
 	defer conn.Close()
 	client := pb.NewFrontendClient(conn)
 
-	getRes, err := Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
-	if err != nil {
-		log.Printf("Get Error, %v", err)
-	} else {
-		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
-	}
-
-	putRes, _ := Put(client, &pb.PutRequest{Key: "10", Type: utils.LocalData, Value: "val"})
-	st := putRes.GetStatus()
-	switch st {
-	case 0:
-		log.Println("Put operation completed successfully.")
-	case -1:
-		log.Printf("Put operation failed.\n")
-	}
-
-	getRes, err = Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
-	if err != nil {
-		log.Printf("Get Error, %v", err)
-	} else {
-		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
-	}
-
-	delRes, _ := Del(client, &pb.DeleteRequest{Key: "10", Type: utils.LocalData})
-	st = delRes.GetStatus()
-	switch st {
-	case 0:
-		log.Println("Delete operation completed successfully.")
-	case 1:
-		log.Println("Delete failed: could not find key.")
-	case -1:
-		log.Printf("Delete operation failed.\n")
-	}
-
-	getRes, err = Get(client, &pb.GetRequest{Key: "10", Type: utils.LocalData})
-	if err != nil {
-		log.Printf("Get Error, %v", err)
-	} else {
-		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
-	}
-
+	get(client, utils.LocalData, "10")
+	put(client, utils.LocalData, "10", "val")
+	get(client, utils.LocalData, "10")
+	del(client, utils.LocalData, "10")
+	get(client, utils.LocalData, "10")
 }
