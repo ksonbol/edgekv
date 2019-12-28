@@ -1,0 +1,111 @@
+#!/usr/bin/ruby -w
+
+gem 'ruby-cute', ">=0.6"
+require 'cute'
+require 'pp' # pretty print
+require 'optparse'
+
+options = {}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: platform_setup.rb [options]"
+
+  opts.on("-s", "--setup", "perform platform setup") do |v|
+    options[:setup] = v
+  end
+
+  opts.on("-r", "--reserve", "make node reservations in setup") do |v|
+    options[:reserve] = v
+  end
+
+  opts.on("-p", "--play", "run experiment") do |v|
+    options[:play] = v
+  end
+end.parse!
+
+NUM_NODES = 2
+HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
+SITE_NAME = 'nancy'
+WALL_TIME = '12:00:00'
+SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
+JOB_QUEUE = 'besteffort'  # CHANGE this when running the experiments
+NODEFILES_DIR = "/home/ksonbol/jobs"
+EXP_FILE = 'experiment.rb'
+
+# Grid'5000  part
+g5k = Cute::G5K::API.new()
+
+# When the script is run with --reserve, node reservation will be done
+# if ARGV[0] == '--reserve'
+if options[:setup]
+  if options[:reserve]
+    # reserve and deploy the nodes
+    # job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :walltime => WALL_TIME,
+    #                   :env => "debian9-x64-nfs", :subnets => [22,1], :keys => SSH_KEY_PATH)
+
+    # only reserve the nodes
+    job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :walltime => WALL_TIME,
+                      :subnets => [22,1], :type => :deploy, :queue => JOB_QUEUE)
+    
+    # reserve nodes using resource (oar) options
+    # job = g5k.reserve(:site => SITE_NAME, :resource => "slash_22=1+nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
+    #                   :type => :deploy, :queue => JOB_QUEUE)
+    puts "Assigned nodes : #{job['assigned_nodes']}"
+  else
+    # otherwise, get the running job
+    jobs = g5k.get_my_jobs(SITE_NAME)
+    raise "No jobs running! Run script with --reserve to create a job" unless jobs.length() > 0
+    job = jobs.first
+  end
+
+  g5k.deploy(job, :env => "debian9-x64-nfs", :keys => SSH_KEY_PATH, :wait => true)
+
+  puts "Preparing node file"
+  nodes = job['assigned_nodes']
+  NODEFILE = File.join(NODEFILES_DIR, job['uid'].to_s)
+  open(NODEFILE, 'w') { |f|
+    nodes.each do |node|
+      f.puts "#{node}\n"
+    end
+  }
+  puts "Setting up Distem"
+  # if running outside Grid'5000
+  # Net::SSH.start("#{SITE_NAME}.#{HOSTNAME}") do |ssh|
+  #   ssh.exec!("distem-bootstrap -f #{NODEFILE} --debian-version stretch")
+  # end
+
+  # else
+  out = %x(bash -c "distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch")
+  puts out
+  if $?.exitstatus == 0  # exit status of last executed shell command
+    puts "Distem setup completed successfully"
+  end
+
+  coordinator = nodes.first
+
+  puts "copying experiment file to coordinator node"
+  out = %x(scp #{EXP_FILE} root@#{coordinator}:/root)
+  if $?.exitstatus == 0
+    puts "copying completed successfully"
+  end
+
+  puts "installing ruby-cute gem on coordinator node for g5k communication"
+  out = %x(ssh root@#{coordinator} 'gem install ruby-cute')
+  if $?.exitstatus == 0
+    puts "gem installed successfully"
+  end
+else  # skipping setup step
+  jobs = g5k.get_my_jobs(SITE_NAME)
+  raise "No jobs running! Run script with --reserve to create a job" unless jobs.length() > 0
+  job = jobs.first
+  nodes = job['assigned_nodes']
+  coordinator = nodes.first
+end
+
+if options[:play]
+  # run experiment
+  out = %x(ssh root@#{coordinator} 'ruby #{EXP_FILE}')
+  if $?.exitstatus == 0
+    puts "experiment completed successfully"
+  end
+end
