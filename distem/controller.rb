@@ -4,6 +4,7 @@ gem 'ruby-cute', ">=0.6"
 require 'cute'
 require 'pp' # pretty print
 require 'optparse'
+require 'time'
 
 options = {}
 
@@ -26,11 +27,20 @@ end.parse!
 NUM_NODES = 2
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
-WALL_TIME = '12:00:00'
+CLUSTER_NAME = 'grisou'
+WALL_TIME = '09:07:00'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
-JOB_QUEUE = 'besteffort'  # CHANGE this when running the experiments
+JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
-EXP_FILE = 'experiment.rb'
+SETUP_FILE = 'setup.rb'
+SRVR_EXP_FILE = 'server_exp.rb'
+CLI_EXP_FILE = 'client_exp.rb'
+GW_EXP_FILE = 'gateway_exp.rb'
+RESERVE_AFTER = 1 # minutes
+
+t = Time.now.round()
+t += RESERVE_AFTER * 60
+RESERV_TIME = t.strftime("%Y-%m-%d %H:%M:%S")
 
 # Grid'5000  part
 g5k = Cute::G5K::API.new()
@@ -44,8 +54,10 @@ if options[:setup]
     #                   :env => "debian9-x64-nfs", :subnets => [22,1], :keys => SSH_KEY_PATH)
 
     # only reserve the nodes
-    job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :walltime => WALL_TIME,
-                      :subnets => [22,1], :type => :deploy, :queue => JOB_QUEUE)
+    job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :cluster => CLUSTER_NAME,
+                      :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
+                      # :reservation => RESERV_TIME,  # for future reservations
+                      :queue => JOB_QUEUE)
     
     # reserve nodes using resource (oar) options
     # job = g5k.reserve(:site => SITE_NAME, :resource => "slash_22=1+nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
@@ -83,17 +95,24 @@ if options[:setup]
 
   coordinator = nodes.first
 
-  puts "copying experiment file to coordinator node"
-  out = %x(scp #{EXP_FILE} root@#{coordinator}:/root)
-  if $?.exitstatus == 0
-    puts "copying completed successfully"
-  end
-
   puts "installing ruby-cute gem on coordinator node for g5k communication"
+  # since this is stored in our fs image, we probably dont need to run this any more
   out = %x(ssh root@#{coordinator} 'gem install ruby-cute')
   if $?.exitstatus == 0
     puts "gem installed successfully"
   end
+
+  # set up the virtual network
+  puts "Setting up the virtual network"
+  out = %x(scp #{SETUP_FILE} root@#{coordinator}:/root)
+  if $?.exitstatus == 0
+    puts "copied setup file"
+  end
+  out = %x(ssh root@#{coordinator} 'ruby #{SETUP_FILE}')
+  if $?.exitstatus == 0
+    puts "virtual network set up successfully"
+  end
+
 else  # skipping setup step
   jobs = g5k.get_my_jobs(SITE_NAME)
   raise "No jobs running! Run script with --reserve to create a job" unless jobs.length() > 0
@@ -103,9 +122,33 @@ else  # skipping setup step
 end
 
 if options[:play]
-  # run experiment
-  out = %x(ssh root@#{coordinator} 'ruby #{EXP_FILE}')
+  puts "copying experiment files to coordinator node"
+  out = %x(scp #{SRVR_EXP_FILE} root@#{coordinator}:/root)
+  out = %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
+  out = %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
   if $?.exitstatus == 0
-    puts "experiment completed successfully"
+    sleep(2)  # seconds
+    puts "copying completed successfully"
   end
+
+  puts "Running experiments"
+
+  puts "Starting edge servers"
+  out = %x(ssh root@#{coordinator} 'ruby #{SRVR_EXP_FILE}')
+  if $?.exitstatus == 0
+    puts "edge servers are running"
+  end
+  puts out
+
+  # puts "Starting clients"
+  # out = %x(ssh root@#{coordinator} 'ruby #{CLI_EXP_FILE}')
+  # if $?.exitstatus == 0
+  #   puts "clients are running"
+  # end
+
+  # puts "Starting gateway nodes"
+  # out = %x(ssh root@#{coordinator} 'ruby #{GW_EXP_FILE}')
+  # if $?.exitstatus == 0
+  #   puts "gateway nodes are running"
+  # end
 end
