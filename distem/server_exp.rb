@@ -35,7 +35,6 @@ cluster_token = "edge-cluster"
 
 serv_node_ips = Array.new(server_vnodes.length)
 initial_cluster_str = "" # needed for etcd peers (servers)
-endpoints_str = "" # endpoints needed for etcd client
 Distem.client do |dis|
 
     # update latencies before experiment
@@ -51,17 +50,14 @@ Distem.client do |dis|
         addr = dis.viface_info(node,'if0')['address'].split('/')[0]
         serv_node_ips[idx] = addr
         initial_cluster_str += "#{node}=http://#{addr}:2380,"
-        endpoints_str += "#{addr}:2379,"
         # if this is already in the fs, no need to export ETCDCTL_API=3
         dis.vnode_execute(node, "pkill etcd")  # kill any previous instances of etcd
     end
     initial_cluster_str = initial_cluster_str[0..-2]  # remove the last comma
-    endpoints_str = endpoints_str[0..-2]              # remove the last comma
     sleep(5)  # make sure old etcd instances are dead
     server_vnodes.each_with_index do |node, idx|
-        # needed for etcd client in edge
-        dis.vnode_execute(node,
-            "export ENDPOINTS=#{endpoints_str};rm -rf /root/etcdlog; mkdir /root/etcdlog") 
+        # clean the log folder
+        dis.vnode_execute(node, "rm -rf /root/etcdlog; mkdir /root/etcdlog") 
         addr = serv_node_ips[idx]
         # puts dis.vnode_execute(node, "etcd --version")
         cmd =  "nohup /usr/local/bin/etcd --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \
