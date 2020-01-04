@@ -16,6 +16,9 @@ Distem.client do |cl|
         if $?.exitstatus != 0
             puts "could not copy edge client code to node #{node}!"
         end
+        cl.vnode_execute(node, "pkill go;pkill client")  # kill any previous instances of go & client.go
+        # clean the log folder
+        cl.vnode_execute(node, "rm -rf /root/etcdlog; mkdir /root/etcdlog") 
         # IMPORTANT: without cd to edgekv folder, go doesnt read mod file and raise errors
         # also, since distem client does not keep state, cd and go run need to be run together
         puts cl.vnode_execute(node,
