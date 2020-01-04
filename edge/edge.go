@@ -30,7 +30,7 @@ var (
 	certFile = flag.String("cert_file", "", "The TLS cert file")
 	keyFile  = flag.String("key_file", "", "The TLS key file")
 	hostname = flag.String("hostname", "localhost", "The server hostname or public IP address")
-	port     = flag.Int("port", 10000, "The server port")
+	port     = flag.Int("port", 2381, "The server port")
 )
 
 //
@@ -135,11 +135,17 @@ func (s *frontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	// 	delete(s.kvGlobal, req.GetKey())
 	// }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	_, err := s.etcdClient.Delete(ctx, req.GetKey())
+	delRes, err := s.etcdClient.Delete(ctx, req.GetKey())
 	cancel()
 	returnErr = checkError(err)
 	if returnErr == nil {
-		returnRes = &pb.DeleteResponse{Status: utils.KVDeleted}
+		if delRes.Deleted < 1 {
+			returnRes = &pb.DeleteResponse{Status: utils.KeyNotFound}
+		} else {
+			returnRes = &pb.DeleteResponse{Status: utils.KVDeleted}
+		}
+	} else {
+		returnRes = &pb.DeleteResponse{Status: utils.UnknownError}
 	}
 	return returnRes, returnErr
 }
@@ -174,6 +180,8 @@ func runEdgeServer(frServer *frontendServer) {
 	grpcServer.Serve(lis)
 
 }
+
+// run with flags -hostname=HOSTNAME -port=PORTNO, default is localhost:2381
 func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // CTRL-C->SIGINT, kill $PID->SIGTERM

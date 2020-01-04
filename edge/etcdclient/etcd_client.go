@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"go.etcd.io/etcd/clientv3"
-	"google.golang.org/grpc"
 	// grpcprom "github.com/grpc-ecosystem/go-grpc-prometheus"
 )
 
@@ -29,10 +28,10 @@ func NewEtcdClient() *clientv3.Client {
 		// Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
 		Endpoints:   endpoints,
 		DialTimeout: 5 * time.Second,
-		DialOptions: []grpc.DialOption{
-			// grpc.WithUnaryInterceptor(grpcprom.UnaryClientInterceptor),
-			// grpc.WithStreamInterceptor(grpcprom.StreamClientInterceptor),
-		},
+		// DialOptions: []grpc.DialOption{
+		// grpc.WithUnaryInterceptor(grpcprom.UnaryClientInterceptor),
+		// grpc.WithStreamInterceptor(grpcprom.StreamClientInterceptor),
+		// },
 		// MaxCallSendMsgSize =
 		// MaxCallRecvMsgSize =
 	})

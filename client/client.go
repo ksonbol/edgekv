@@ -8,8 +8,8 @@ import (
 	"log"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	// "google.golang.org/grpc/codes"
+	// "google.golang.org/grpc/status"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -38,10 +38,11 @@ func Put(client pb.FrontendClient, req *pb.PutRequest) (*pb.PutResponse, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	res, err := client.Put(ctx, req)
-	if err != nil {
-		log.Fatalf("%v.Put(_) = _, %v: ", client, err)
-	}
-	return res, nil
+	return res, err
+	// if err != nil {
+	// log.Fatalf("%v.Put(_) = _, %v: ", client, err)
+	// }
+	// return res, nil
 }
 
 // Del delete key from server's key-value store
@@ -63,36 +64,43 @@ func get(client pb.FrontendClient, dataT bool, key string) (string, error) {
 	var val string
 	var returnErr error
 	getRes, err := Get(client, &pb.GetRequest{Key: key, Type: dataT})
+	// return getRes.GetValue(), err
 	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			code := st.Code()
-			if code == codes.NotFound {
-				fmt.Printf("Key not found: %v\n", err)
-			}
-		} else {
-			fmt.Println(err)
-		}
+		returnErr = fmt.Errorf("get operation failed: %v", err)
+		// if st, ok := status.FromError(err); ok {
+		// 	code := st.Code()
+		// 	if code == codes.NotFound {
+		// 		returnErr = fmt.Errorf("get operation failed: %v", err)
+		// 	}
+		// } else {
+		// 	returnErr = fmt.Errorf(err)
+		// }
 	} else {
-		log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+		// log.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
+		val = getRes.GetValue()
 	}
+	// fmt.Printf("Value: %s, Size: %d\n", getRes.GetValue(), getRes.GetSize())
 	return val, returnErr
 }
 
 // put just prints the output or error to stdout
 // TODO: return value instead and use it in benchmark
 func put(client pb.FrontendClient, dataT bool, key string, val string) (int32, error) {
-	var returnSt int32
+	var returnSt int32 // return status
 	var returnErr error
 	putRes, err := Put(client, &pb.PutRequest{Key: key, Type: dataT, Value: val})
-	st := putRes.GetStatus()
+	returnSt = putRes.GetStatus()
+	returnErr = err
 	if err != nil {
-		log.Printf("Put operation failed: %v", err)
+		returnErr = fmt.Errorf("Put operation failed: %v", err)
 	} else {
-		switch st {
+		switch returnSt {
 		case utils.KVAddedOrUpdated:
-			log.Println("Put operation completed successfully.")
+			// log.Println("Put operation completed successfully.")
 		case utils.UnknownError:
-			log.Printf("Put operation failed: %v.\n", err)
+			// log.Printf("Put operation failed: %v.\n", err)
+			returnErr = fmt.Errorf("Unkown error happened, put operation failed")
+
 		}
 	}
 	return returnSt, returnErr
@@ -104,17 +112,18 @@ func del(client pb.FrontendClient, dataT bool, key string) (int32, error) {
 	var returnSt int32
 	var returnErr error
 	delRes, err := Del(client, &pb.DeleteRequest{Key: key, Type: dataT})
-	st := delRes.GetStatus()
+	returnSt = delRes.GetStatus()
+	returnErr = err
 	if err != nil {
-		log.Printf("Delete operation failed: %v", err)
+		// log.Printf("Delete operation failed: %v", err)
 	} else {
-		switch st {
+		switch returnSt {
 		case utils.KVDeleted:
-			log.Println("Delete operation completed successfully.")
+			// log.Println("Delete operation completed successfully.")
 		case utils.KeyNotFound:
-			log.Println("Delete failed: could not find key.")
+			returnErr = fmt.Errorf("delete failed: could not find key: %s", key)
 		case utils.UnknownError:
-			log.Printf("Delete operation failed., %v\n", err)
+			returnErr = fmt.Errorf("delete operation failed: %v", err)
 		}
 	}
 	return returnSt, returnErr
@@ -143,15 +152,15 @@ func getConnectionToServer() *grpc.ClientConn {
 	return conn
 }
 
-// run with flag -serveraddress=localhost:PORT, default is localhost:2379
+// run with flag -server_addr=localhost:PORT, default is localhost:2379
 func main() {
 	conn := getConnectionToServer()
 	defer conn.Close()
 	client := pb.NewFrontendClient(conn)
 
-	get(client, utils.LocalData, "10")
-	put(client, utils.LocalData, "10", "val")
-	get(client, utils.LocalData, "10")
-	del(client, utils.LocalData, "10")
-	get(client, utils.LocalData, "10")
+	fmt.Println(get(client, utils.LocalData, "10"))
+	fmt.Println(put(client, utils.LocalData, "10", "val"))
+	fmt.Println(get(client, utils.LocalData, "10"))
+	fmt.Println(del(client, utils.LocalData, "10"))
+	fmt.Println(get(client, utils.LocalData, "10"))
 }
