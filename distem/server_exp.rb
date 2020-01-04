@@ -34,40 +34,58 @@ instance_name = "edge"
 cluster_token = "edge-cluster"
 
 serv_node_ips = Array.new(server_vnodes.length)
-initial_cluster_str = ""
+initial_cluster_str = "" # needed for etcd peers (servers)
+endpoints_str = "" # endpoints needed for etcd client
 Distem.client do |dis|
+
+    # update latencies before experiment
+    # latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
+    # assume lat(node to itself) = 0
+    # assume lat(client to client) = 0
+    # dis.set_peers_latencies(vnodelist, latency_mat)
+    # sleep(2)
+
+
     # get node IPs and prepare initial cluster conf
     server_vnodes.each_with_index do |node, idx|
         addr = dis.viface_info(node,'if0')['address'].split('/')[0]
         serv_node_ips[idx] = addr
         initial_cluster_str += "#{node}=http://#{addr}:2380,"
-        dis.vnode_execute(node, "pkill etcd;export ETCDCTL_API=3")  # kill any previous instances of etcd
+        endpoints_str += "#{addr}:2379,"
+        # if this is already in the fs, no need to export ETCDCTL_API=3
+        dis.vnode_execute(node, "pkill etcd")  # kill any previous instances of etcd
     end
     initial_cluster_str = initial_cluster_str[0..-2]  # remove the last comma
-    sleep(3)  # make sure old etcd instances are dead
+    endpoints_str = endpoints_str[0..-2]              # remove the last comma
+    sleep(5)  # make sure old etcd instances are dead
     server_vnodes.each_with_index do |node, idx|
+        # needed for etcd client in edge
+        dis.vnode_execute(node,
+            "export ENDPOINTS=#{endpoints_str};rm -rf /root/etcdlog; mkdir /root/etcdlog") 
         addr = serv_node_ips[idx]
-        cmd =  "etcd --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \
+        # puts dis.vnode_execute(node, "etcd --version")
+        cmd =  "nohup /usr/local/bin/etcd --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \
         --listen-peer-urls http://#{addr}:2380 \
         --listen-client-urls http://#{addr}:2379,http://127.0.0.1:2379 \
         --advertise-client-urls http://#{addr}:2379 \
         --initial-cluster-token #{cluster_token} \
         --initial-cluster #{initial_cluster_str} \
-        --initial-cluster-state new &> /tmp/etcdlog/out.log &"
+        --initial-cluster-state new > /root/etcdlog/etcd.log 2>&1 &"
+        # --initial-cluster-state new &> /root/etcdlog/out.log &"
         # IMPORTANT: without the last part of the command the function blocks forever!
         # should we add this to listen-client-urls? ,http://127.0.0.1:4001
-        dis.vnode_execute(node, cmd)
-        puts "etcd server #{idx+1} running"
+        puts dis.vnode_execute(node, cmd)
+        # puts "etcd server #{idx+1} running"
     end
-    sleep(5)
+    sleep(7)
     dis.vnode_execute(server_vnodes[0], "etcdctl put mykey myvalue")
-    sleep(2)
+    sleep(3)
     out = dis.vnode_execute(server_vnodes[1], "etcdctl get mykey")
-    if out[0] == "myvalue"
+    if out.length>=2 && out[1] == "myvalue"
         puts "etcd cluster is working correctly"
     else
-        puts "RESULT IS: '#{out}'"
+        puts "etcd cluster not setup correctly: '#{out}'"
     end
     dis.vnode_execute(server_vnodes[2], "etcdctl del mykey")
 end
-puts "all etcd servers are now running!"
+# puts "all etcd servers are now running!"

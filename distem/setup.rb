@@ -10,7 +10,7 @@ HOSTNAME = "g5k"
 # The path to the compressed filesystem image
 # We can point to local file since our homedir is available from NFS
 # FSIMG="file:///home/ksonbol/distem_img/distem-fs-jessie.tar.gz"
-FSIMG="file:///home/ksonbol/edgekv/edgekv-fs-jessie.tar.gz"
+FSIMG="file:///home/ksonbol/fs-img/edgekv-fs-jessie.tar.gz"
 
 g5k = Cute::G5K::API.new(:username => "ksonbol")
 jobs = g5k.get_my_jobs(SITE_NAME)
@@ -93,40 +93,41 @@ Distem.client do |dis|
   end
 
   sleep(5)
-  if dis.wait_vnodes() # optional opts arg: {'timeout' => 600, 'port' => 22}
-    puts "Vnodes started successfully"
+  if dis.wait_vnodes({'timeout' => 60}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
+    puts "vnodes started successfully"
   else
     puts "vnodes are unreachable, maybe wait a little more?"
     exit 1
   end
 
+  # puts "Updating vnodes latencies"
   cc = 0.035  # cloud-to-cloud latency
   cl = 100    # cloud-to-client latency
   ee = 3.2    # edge-to-edge latency
   el = 3.2    # edge-to-client latency
   
-  latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
-  # assume lat(node to itself) = 0
-  # assume lat(client to client) = 0
+  # latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
+  # # assume lat(node to itself) = 0
+  # # assume lat(client to client) = 0
 
-  # set edge latencies (in ms??)
-  for r in 0..NUM_VNODE-1
-    for c in 0..NUM_VNODE-1
-      if r != c  # we let node-to-self latency = 0
-        if (r < server_vnodes.length) && (c < server_vnodes.length)
-          # edge-to-edge
-          latency_mat[r][c] = ee
-        elsif (r >= server_vnodes.length) ^ (c >= server_vnodes.length)  # xor
-          # edge-to-client
-          latency_mat[r][c] = el
-        # else: client-to-client already zeroed
-        end
-      end
-    end
-  end
+  # # set edge latencies (in ms??)
+  # for r in 0..NUM_VNODE-1
+  #   for c in 0..NUM_VNODE-1
+  #     if r != c  # we let node-to-self latency = 0
+  #       if (r < server_vnodes.length) && (c < server_vnodes.length)
+  #         # edge-to-edge
+  #         latency_mat[r][c] = ee
+  #       elsif (r >= server_vnodes.length) ^ (c >= server_vnodes.length)  # xor
+  #         # edge-to-client
+  #         latency_mat[r][c] = el
+  #       # else: client-to-client already zeroed
+  #       end
+  #     end
+  #   end
+  # end
 
-  dis.set_peers_latencies(vnodelist, latency_mat)
-  put "updated latencies for edge experiment"
+  # dis.set_peers_latencies(vnodelist, latency_mat)
+  # put "updated latencies for edge experiment"
   # start edge experiment
 
 

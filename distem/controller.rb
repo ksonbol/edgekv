@@ -19,6 +19,10 @@ OptionParser.new do |opts|
     options[:reserve] = v
   end
 
+  opts.on("-d", "--deploy", "deploy OS to pnodes") do |v|
+    options[:deploy] = v
+  end
+
   opts.on("-p", "--play", "run experiment") do |v|
     options[:play] = v
   end
@@ -28,15 +32,18 @@ NUM_NODES = 2
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
 CLUSTER_NAME = 'grisou'
-WALL_TIME = '09:07:00'
+# CLUSTER_NAME = 'gros'
+WALL_TIME = '05:00:00'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
 SETUP_FILE = 'setup.rb'
-SRVR_EXP_FILE = 'server_exp.rb'
+SRVR_EXP_FILE = 'server_exp.rb' # etcd servers
+EDGE_EXP_FILE = 'edge_exp.rb'
 CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
-RESERVE_AFTER = 1 # minutes
+EDGEKV_FOLDER = "edgekv"
+RESERVE_AFTER = 2 # minutes
 
 t = Time.now.round()
 t += RESERVE_AFTER * 60
@@ -70,7 +77,9 @@ if options[:setup]
     job = jobs.first
   end
 
-  g5k.deploy(job, :env => "debian9-x64-nfs", :keys => SSH_KEY_PATH, :wait => true)
+  if options[:deploy]
+    g5k.deploy(job, :env => "debian9-x64-nfs", :keys => SSH_KEY_PATH, :wait => true)
+  end
 
   puts "Preparing node file"
   nodes = job['assigned_nodes']
@@ -80,13 +89,8 @@ if options[:setup]
       f.puts "#{node}\n"
     end
   }
-  puts "Setting up Distem"
-  # if running outside Grid'5000
-  # Net::SSH.start("#{SITE_NAME}.#{HOSTNAME}") do |ssh|
-  #   ssh.exec!("distem-bootstrap -f #{NODEFILE} --debian-version stretch")
-  # end
 
-  # else
+  puts "Setting up Distem"
   out = %x(bash -c "distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch")
   puts out
   if $?.exitstatus == 0  # exit status of last executed shell command
@@ -105,12 +109,16 @@ if options[:setup]
   # set up the virtual network
   puts "Setting up the virtual network"
   out = %x(scp #{SETUP_FILE} root@#{coordinator}:/root)
+  puts out
   if $?.exitstatus == 0
     puts "copied setup file"
   end
+  
   out = %x(ssh root@#{coordinator} 'ruby #{SETUP_FILE}')
+  puts out
   if $?.exitstatus == 0
     puts "virtual network set up successfully"
+
   end
 
 else  # skipping setup step
@@ -124,8 +132,12 @@ end
 if options[:play]
   puts "copying experiment files to coordinator node"
   out = %x(scp #{SRVR_EXP_FILE} root@#{coordinator}:/root)
+  out = %x(scp #{EDGE_EXP_FILE} root@#{coordinator}:/root)
   out = %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
   out = %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
+  out = %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
+  # out = %x(scp -r edge/ root@#{coordinator}:/root)
+  # out = %x(scp -r client/ root@#{coordinator}:/root)
   if $?.exitstatus == 0
     sleep(2)  # seconds
     puts "copying completed successfully"
@@ -133,18 +145,26 @@ if options[:play]
 
   puts "Running experiments"
 
-  puts "Starting edge servers"
+  puts "Starting etcd servers"
   out = %x(ssh root@#{coordinator} 'ruby #{SRVR_EXP_FILE}')
+  if $?.exitstatus == 0
+    puts "etcd servers are running"
+  end
+  puts out
+
+  puts "Starting edge servers"
+  out = %x(ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}')
   if $?.exitstatus == 0
     puts "edge servers are running"
   end
   puts out
 
-  # puts "Starting clients"
-  # out = %x(ssh root@#{coordinator} 'ruby #{CLI_EXP_FILE}')
-  # if $?.exitstatus == 0
-  #   puts "clients are running"
-  # end
+  puts "Starting clients"
+  out = %x(ssh #{coordinator} 'ruby #{CLI_EXP_FILE}')
+  puts out
+  if $?.exitstatus == 0
+    puts "clients are running"
+  end
 
   # puts "Starting gateway nodes"
   # out = %x(ssh root@#{coordinator} 'ruby #{GW_EXP_FILE}')
