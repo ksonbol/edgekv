@@ -20,9 +20,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/testdata"
 
-	"edgekv/edge/etcdclient"
-	pb "edgekv/frontend/frontend"
-	"edgekv/utils"
+	"github.com/ksonbol/edgekv/edge/etcdclient"
+	pb "github.com/ksonbol/edgekv/frontend/frontend"
+	"github.com/ksonbol/edgekv/utils"
 )
 
 var (

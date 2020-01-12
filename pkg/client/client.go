@@ -1,23 +1,16 @@
-package main
+package client
 
 import (
 	"context"
-	"edgekv/utils"
-	"flag"
 	"fmt"
 	"log"
 	"time"
+	
+	"github.com/ksonbol/edgekv/utils"
+	pb "github.com/ksonbol/edgekv/frontend/frontend"
 
-	pb "edgekv/frontend/frontend"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-)
-
-var (
-	serverAddr         = flag.String("server_addr", "localhost:2381", "The server address in the format of host:port")
-	tls                = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	caFile             = flag.String("ca_file", "", "The file containing the CA root cert file")
-	serverHostOverride = flag.String("server_host_override", "x.test.youtube.com", "The server name used to verify the hostname returned by TLS handshake")
 )
 
 // Client is the user endpoint access to edgekv
@@ -115,19 +108,4 @@ func (c *EdgekvClient) Del(key string, dataType bool) error {
 		}
 	}
 	return returnErr
-}
-
-// run with flag -server_addr=localhost:PORT, default is localhost:2381
-func main() {
-	flag.Parse()
-	cl, err := NewEdgekvClient(*serverAddr, *tls, *caFile, *serverHostOverride)
-	if err != nil {
-		fmt.Printf("Error while creating edgekv client %v\n", err)
-	}
-	key := "key"
-	fmt.Println(cl.Get(key, utils.LocalData))
-	fmt.Println(cl.Put(key, utils.LocalData, "val"))
-	fmt.Println(cl.Get(key, utils.LocalData))
-	fmt.Println(cl.Del(key, utils.LocalData))
-	fmt.Println(cl.Get(key, utils.LocalData))
 }

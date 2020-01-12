@@ -6,7 +6,7 @@ package mock_frontend
 
 import (
 	context "context"
-	frontend "edgekv/frontend/frontend"
+	frontend "github.com/ksonbol/edgekv/frontend/frontend"
 	gomock "github.com/golang/mock/gomock"
 	grpc "google.golang.org/grpc"
 	reflect "reflect"

@@ -1,12 +1,12 @@
-package main
+package client
 
 import (
 	"fmt"
 	"testing"
 
-	pb "edgekv/frontend/frontend"
-	frmock "edgekv/frontend/mock_frontend"
-	"edgekv/utils"
+	pb "github.com/ksonbol/edgekv/frontend/frontend"
+	frmock "github.com/ksonbol/edgekv/frontend/mock_frontend"
+	"github.com/ksonbol/edgekv/utils"
 
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/proto"
