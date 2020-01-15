@@ -10,12 +10,14 @@ import "fmt"
 
 // Types of data in the system
 const (
-	LocalData        bool  = true
-	GlobalData       bool  = false
-	KVAddedOrUpdated int32 = 0
-	KVDeleted        int32 = 1
-	KeyNotFound      int32 = 2
-	UnknownError     int32 = 3
+	LocalData        bool   = true
+	GlobalData       bool   = false
+	LocalDataStr     string = "local"
+	GlobalDataStr    string = "global"
+	KVAddedOrUpdated int32  = 0
+	KVDeleted        int32  = 1
+	KeyNotFound      int32  = 2
+	UnknownError     int32  = 3
 )
 
 // KeyNotFoundError shows missing key in database

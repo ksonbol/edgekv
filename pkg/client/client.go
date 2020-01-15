@@ -72,29 +72,29 @@ func (c *EdgekvClient) Close() error {
 }
 
 // Get the value associated with a key and data type from kv store
-func (c *EdgekvClient) Get(key string, dataType bool) (string, error) {
+func (c *EdgekvClient) Get(key string, dataType string) (string, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.GetRequest{Key: key, Type: dataType}
+	req := &pb.GetRequest{Key: key, Type: isLocal(dataType)}
 	res, err := c.rpcClient.Get(ctx, req)
 	return res.GetValue(), err
 }
 
 // Put adds the key-value pair or updates the value of given key
-func (c *EdgekvClient) Put(key string, dataType bool, value string) error {
+func (c *EdgekvClient) Put(key string, dataType string, value string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.PutRequest{Key: key, Type: dataType, Value: value}
+	req := &pb.PutRequest{Key: key, Type: isLocal(dataType), Value: value}
 	_, err := c.rpcClient.Put(ctx, req)
 	return err
 }
 
 // Del removes the key-value pair from kv store
-func (c *EdgekvClient) Del(key string, dataType bool) error {
+func (c *EdgekvClient) Del(key string, dataType string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.DeleteRequest{Key: key, Type: dataType}
+	req := &pb.DeleteRequest{Key: key, Type: isLocal(dataType)}
 	res, err := c.rpcClient.Del(ctx, req)
 	st := res.GetStatus()
 	returnErr := err
@@ -107,4 +107,13 @@ func (c *EdgekvClient) Del(key string, dataType bool) error {
 		}
 	}
 	return returnErr
+}
+
+func isLocal(dataType string) bool {
+	switch dataType {
+	case utils.LocalDataStr:
+		return utils.LocalData
+	default:
+		return utils.GlobalData
+	}
 }
