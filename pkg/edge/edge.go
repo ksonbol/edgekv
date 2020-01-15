@@ -1,46 +1,24 @@
-package main
+package edge
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
+	pb "github.com/ksonbol/edgekv/frontend/frontend"
+
+	"github.com/ksonbol/edgekv/internal/etcdclient"
+	"github.com/ksonbol/edgekv/utils"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/testdata"
-
-	"github.com/ksonbol/edgekv/edge/etcdclient"
-	pb "github.com/ksonbol/edgekv/frontend/frontend"
-	"github.com/ksonbol/edgekv/utils"
 )
-
-var (
-	tls      = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	certFile = flag.String("cert_file", "", "The TLS cert file")
-	keyFile  = flag.String("key_file", "", "The TLS key file")
-	hostname = flag.String("hostname", "localhost", "The server hostname or public IP address")
-	port     = flag.Int("port", 2381, "The server port")
-)
-
-//
-type frontendServer struct {
-	pb.UnimplementedFrontendServer
-	kvLocal    map[string]string
-	kvGlobal   map[string]string
-	mu         sync.Mutex
-	etcdClient *clientv3.Client
-}
 
 func checkError(err error) error {
 	var returnErr error
@@ -71,21 +49,24 @@ func checkError(err error) error {
 	return returnErr
 }
 
+// FrontendServer used to manage edge nodes
+type FrontendServer struct {
+	pb.UnimplementedFrontendServer
+	mu         sync.Mutex
+	etcdClient *clientv3.Client
+	hostname   string
+	port       int
+}
+
 // Get returns the Value at the specified key and data type
-func (s *frontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	var val string
 	// var exists bool
 	var returnErr error = nil
 	var returnRes *pb.GetResponse
 
-	// TODO: implement two KV Stores
-	// switch req.GetType() {
-	// case utils.LocalData:
-	// 	val, exists = s.kvLocal[req.GetKey()]
-	// case utils.GlobalData:
-	// 	val, exists = s.kvGlobal[req.GetKey()]
-	// }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// TODO: local vs global data
 	res, err := s.etcdClient.Get(ctx, req.GetKey())
 	cancel()
 	returnErr = checkError(err)
@@ -105,16 +86,12 @@ func (s *frontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 }
 
 // Put stores the Value at the specified key and data type
-func (s *frontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
+func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
 	var returnErr error = nil
 	var returnRes *pb.PutResponse
-	// switch req.GetType() {
-	// case utils.LocalData:
-	// 	s.kvLocal[req.GetKey()] = req.GetValue()
-	// case utils.GlobalData:
-	// 	s.kvGlobal[req.GetKey()] = req.GetValue()
-	// }
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// TODO: local vs global data
 	_, err := s.etcdClient.Put(ctx, req.GetKey(), req.GetValue())
 	cancel()
 	returnErr = checkError(err)
@@ -125,16 +102,11 @@ func (s *frontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 }
 
 // Del deletes the key-value pair
-func (s *frontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	var returnErr error = nil
 	var returnRes *pb.DeleteResponse
-	// switch req.GetType() {
-	// case utils.LocalData:
-	// 	delete(s.kvLocal, req.GetKey())
-	// case utils.GlobalData:
-	// 	delete(s.kvGlobal, req.GetKey())
-	// }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// TODO: local vs global data
 	delRes, err := s.etcdClient.Delete(ctx, req.GetKey())
 	cancel()
 	returnErr = checkError(err)
@@ -150,46 +122,48 @@ func (s *frontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	return returnRes, returnErr
 }
 
-func newServer() *frontendServer {
-	s := &frontendServer{kvLocal: make(map[string]string), etcdClient: etcdclient.NewEtcdClient()}
-	return s
-}
-
-func runEdgeServer(frServer *frontendServer) {
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *hostname, *port))
+// Run the edge server and connect to the etcd cluster
+func (s *FrontendServer) Run(tls bool, certFile string,
+	keyFile string) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostname, s.port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	var opts []grpc.ServerOption
-	if *tls {
-		if *certFile == "" {
-			*certFile = testdata.Path("server1.pem")
-		}
-		if *keyFile == "" {
-			*keyFile = testdata.Path("server1.key")
-		}
-		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
+	if tls {
+		// if caFile == "" {
+		// 	set default caFile path
+		// }
+		// if keyFile == "" {
+		// 	set default keyFile path
+		// }
+		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
 			log.Fatalf("Failed to generate credentials %v", err)
 		}
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
 	grpcServer := grpc.NewServer(opts...)
-	pb.RegisterFrontendServer(grpcServer, frServer)
+	pb.RegisterFrontendServer(grpcServer, s)
 	grpcServer.Serve(lis)
-
+	return nil
 }
 
-// run with flags -hostname=HOSTNAME -port=PORTNO, default is localhost:2381
-func main() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // CTRL-C->SIGINT, kill $PID->SIGTERM
-	server := newServer()
-	go runEdgeServer(server)
-	log.Println("Listening to client requests")
-	<-sigs
-	(*server).etcdClient.Close()
-	log.Println("Stopping the server...")
-	os.Exit(0)
+// RunInsecure run the edge server without authentication
+func (s *FrontendServer) RunInsecure() error {
+	return s.Run(false, "", "")
+}
+
+// Close the edge server and free its resources
+func (s *FrontendServer) Close() error {
+	return s.etcdClient.Close()
+}
+
+// NewEdgeServer return a new edge server
+func NewEdgeServer(hostname string, port int) *FrontendServer {
+	s := &FrontendServer{
+		etcdClient: etcdclient.NewEtcdClient(),
+		hostname:   hostname,
+		port:       port}
+	return s
 }
