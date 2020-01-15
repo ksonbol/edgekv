@@ -4,7 +4,7 @@ gem 'ruby-cute', ">=0.6"
 require 'cute'
 require 'pp' # pretty print
 require 'optparse'
-require 'time'
+# require 'time'
 
 options = {}
 
@@ -31,9 +31,9 @@ end.parse!
 NUM_NODES = 2
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
+# CLUSTER_NAME = 'grimoire'
 CLUSTER_NAME = 'grisou'
-# CLUSTER_NAME = 'gros'
-WALL_TIME = '05:00:00'
+WALL_TIME = '06:00:00'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
@@ -43,7 +43,8 @@ EDGE_EXP_FILE = 'edge_exp.rb'
 CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
 EDGEKV_FOLDER = "edgekv"
-RESERVE_AFTER = 2 # minutes
+DISK_PREP_SH = "disk_prep.sh"
+RESERVE_AFTER = 5 # minutes
 
 t = Time.now.round()
 t += RESERVE_AFTER * 60
@@ -61,14 +62,20 @@ if options[:setup]
     #                   :env => "debian9-x64-nfs", :subnets => [22,1], :keys => SSH_KEY_PATH)
 
     # only reserve the nodes
-    job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :cluster => CLUSTER_NAME,
-                      :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
-                      # :reservation => RESERV_TIME,  # for future reservations
-                      :queue => JOB_QUEUE)
+    # job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :cluster => CLUSTER_NAME,
+    #                   :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
+    #                   # :reservation => RESERV_TIME,  # for future reservations
+    #                   :queue => JOB_QUEUE)
     
     # reserve nodes using resource (oar) options
-    # job = g5k.reserve(:site => SITE_NAME, :resource => "slash_22=1+nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
+    # job = g5k.reserve(:site => SITE_NAME, :resources => "slash_22=1+nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
     #                   :type => :deploy, :queue => JOB_QUEUE)
+
+    job = g5k.reserve(:site => SITE_NAME, :type => :deploy, :queue => JOB_QUEUE,
+                      :resources => "/slash_22=1+{(type='disk' or type='default') and cluster='#{CLUSTER_NAME}'} \
+                                     /nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
+                      # :reservation => RESERV_TIME,  # for future reservations
+                      :keys => SSH_KEY_PATH)
     puts "Assigned nodes : #{job['assigned_nodes']}"
   else
     # otherwise, get the running job
@@ -79,6 +86,19 @@ if options[:setup]
 
   if options[:deploy]
     g5k.deploy(job, :env => "debian9-x64-nfs", :keys => SSH_KEY_PATH, :wait => true)
+
+    # preparing the disks
+    nodes =job['assigned_nodes']
+    nodes.each_with_index do |node, idx|
+      puts "preparing disks on node #{node}"
+      system("scp #{DISK_PREP_SH} root@#{node}:/root")
+      system("ssh root@#{node} 'mkdir /mnt/edgekv-1 /mnt/edgekv-2 /mnt/edgekv-3 /mnt/edgekv-4'")
+      system("ssh root@#{node} 'chmod a+x #{DISK_PREP_SH}'")
+      system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdb /mnt/edgekv-1'")
+      # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdc /mnt/edgekv-2'")
+      # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdd /mnt/edgekv-3'")
+      # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sde /mnt/edgekv-4'")
+    end
   end
 
   puts "Preparing node file"
@@ -91,34 +111,29 @@ if options[:setup]
   }
 
   puts "Setting up Distem"
-  out = %x(bash -c "distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch")
-  puts out
-  if $?.exitstatus == 0  # exit status of last executed shell command
-    puts "Distem setup completed successfully"
-  end
+  system("bash -c '/home/ksonbol/distem-bootstrap -g --git-url 'https://github.com/ksonbol/distem.git' -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
+  # system("bash -c '/home/ksonbol/distem-bootstrap-karim -g -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
 
   coordinator = nodes.first
 
   puts "installing ruby-cute gem on coordinator node for g5k communication"
   # since this is stored in our fs image, we probably dont need to run this any more
-  out = %x(ssh root@#{coordinator} 'gem install ruby-cute')
+ system("ssh root@#{coordinator} 'gem install ruby-cute'")
   if $?.exitstatus == 0
     puts "gem installed successfully"
   end
 
   # set up the virtual network
   puts "Setting up the virtual network"
-  out = %x(scp #{SETUP_FILE} root@#{coordinator}:/root)
-  puts out
-  if $?.exitstatus == 0
-    puts "copied setup file"
-  end
+  system("scp #{SETUP_FILE} root@#{coordinator}:/root")
+    if $?.exitstatus == 0
+      puts "copied setup file"
+    end
   
   out = %x(ssh root@#{coordinator} 'ruby #{SETUP_FILE}')
   puts out
   if $?.exitstatus == 0
     puts "virtual network set up successfully"
-
   end
 
 else  # skipping setup step
@@ -146,25 +161,24 @@ if options[:play]
   puts "Running experiments"
 
   puts "Starting etcd servers"
-  out = %x(ssh root@#{coordinator} 'ruby #{SRVR_EXP_FILE}')
+system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "etcd servers are running"
   end
-  puts out
 
-  puts "Starting edge servers"
-  out = %x(ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}')
-  if $?.exitstatus == 0
-    puts "edge servers are running"
-  end
-  puts out
+  # puts "Starting edge servers"
+  # out = %x(ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}')
+  # if $?.exitstatus == 0
+  #   puts "edge servers are running"
+  # end
+  # puts out
 
-  puts "Starting clients"
-  out = %x(ssh #{coordinator} 'ruby #{CLI_EXP_FILE}')
-  puts out
-  if $?.exitstatus == 0
-    puts "clients are running"
-  end
+  # puts "Starting clients"
+  # out = %x(ssh #{coordinator} 'ruby #{CLI_EXP_FILE}')
+  # puts out
+  # if $?.exitstatus == 0
+  #   puts "clients are running"
+  # end
 
   # puts "Starting gateway nodes"
   # out = %x(ssh root@#{coordinator} 'ruby #{GW_EXP_FILE}')
@@ -172,3 +186,12 @@ if options[:play]
   #   puts "gateway nodes are running"
   # end
 end
+
+# def ssh_run(remote, cmd, desc="command")
+#   out = system("ssh #{remote} '#{cmd}'")
+# end
+
+# def scp(files, dest, is_dir=false)
+#   rec_flag = is_dir ? "-r " : ""
+#   success = system("scp #{rec_flag}#{files} #{dest}")
+# end

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"time"
-	
-	"github.com/ksonbol/edgekv/utils"
+
 	pb "github.com/ksonbol/edgekv/frontend/frontend"
+	"github.com/ksonbol/edgekv/utils"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -60,7 +60,7 @@ func NewEdgekvClient(serverAddr string, tls bool, caFile string,
 	return &EdgekvClient{conn: conn, rpcClient: client, rpcTimeout: 10 * time.Second}, err
 }
 
-// InsecureEdgekvClient returns a client connected without credentials
+// NewInsecureEdgekvClient returns a client connected without credentials
 // Do not use in production!
 func NewInsecureEdgekvClient(serverAddr string) (*EdgekvClient, error) {
 	return NewEdgekvClient(serverAddr, false, "", "")
@@ -68,8 +68,7 @@ func NewInsecureEdgekvClient(serverAddr string) (*EdgekvClient, error) {
 
 // Close the client gRPC connection
 func (c *EdgekvClient) Close() error {
-	c.conn.Close()
-	return nil
+	return c.conn.Close()
 }
 
 // Get the value associated with a key and data type from kv store

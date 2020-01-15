@@ -57,7 +57,8 @@ Distem.client do |dis|
     sleep(5)  # make sure old etcd instances are dead
     server_vnodes.each_with_index do |node, idx|
         # clean the log folder
-        dis.vnode_execute(node, "rm -rf /root/etcdlog; mkdir /root/etcdlog") 
+        dis.vnode_execute(node, "rm -rf /root/etcdlog /root/#{node}.etcd; mkdir /root/etcdlog") 
+        # dis.vnode_execute(node, "rm -rf /root/#{node}.etcd") 
         addr = serv_node_ips[idx]
         # puts dis.vnode_execute(node, "etcd --version")
         cmd =  "nohup /usr/local/bin/etcd --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \

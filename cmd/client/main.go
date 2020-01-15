@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/ksonbol/edgekv/pkg/client"
-	"github.com/ksonbol/edgekv/utils"
 	"flag"
 	"fmt"
+	"github.com/ksonbol/edgekv/pkg/client"
+	"github.com/ksonbol/edgekv/utils"
 )
 
 var (

@@ -26,7 +26,7 @@ subnet_addr = "#{subnet.address}/#{subnet.prefix}"
 
 pnodes = job['assigned_nodes']
 pnodes.map!{|n| n.split(".")[0]}  # remove the ".SITE_NAME.grid5000.fr" suffix
-raise 'This experiment requires at least two physical machines' unless pnodes.size >= 2
+# raise 'This experiment requires at least two physical machines' unless pnodes.size >= 2
 coordinator = pnodes.first
 
 # This ruby hash table describes our virtual network
@@ -35,56 +35,61 @@ vnet = {
   'address' => subnet_addr
 }
 
-server_vnodes = ['etcd-1', 'etcd-2', 'etcd-3', 'etcd-4', 'etcd-5']
+# server_vnodes = ['etcd-1', 'etcd-2', 'etcd-3', 'etcd-4', 'etcd-5']
+server_vnodes = ['etcd-1', 'etcd-2', 'etcd-3']
 client_vnodes = ['cli-1']
 vnodelist = server_vnodes + client_vnodes
 NUM_VNODE = vnodelist.length
 
-########
-# if running remotely
-
-# connect to coordinator
-# Net::SSH.start("#{coordinator}", "root") do |ssh|
-#   # Read SSH keys
-  # private_key = ssh.exec!("cat ~/.ssh/id_rsa")
-  # public_key = ssh.exec!("cat ~/.ssh/id_rsa.pub")
-# end
-# Net::SSH::Multi.start do |ssh|
-  # ssh.use "root@#{pnodes.first}"
-
-# Net::SSH.start("#{SITE_NAME}.#{HOSTNAME}") do |ssh|
-# end
-#########
-# if running on coordinator node
+# running on coordinator node
 private_key = IO.readlines('/root/.ssh/id_rsa').join
 public_key = IO.readlines('/root/.ssh/id_rsa.pub').join
-
-# if running on frontend (note that frontend keys and coordinator keys are the same, we copied them)
-# private_key = IO.readlines('/home/ksonbol/.ssh/id_rsa').join
-# public_key = IO.readlines('/home/ksonbol/.ssh/id_rsa.pub').join
-#########
 
 sshkeys = {
   'private' => private_key,
   'public' => public_key
 }
 
-puts sshkeys
-
 # Connect to the Distem server (on http://localhost:4567 by default)
 Distem.client do |dis|
   puts 'Creating virtual network'
   # Start by creating the virtual network
   dis.vnetwork_create(vnet['name'], vnet['address'])
-  # Creating one virtual node per physical one
   puts 'Creating virtual nodes'
-  # put vnode1 on pnode1 (coordinator), and the rest on pnode2
-  vnodelist.each_with_index do |node_name, idx|
-    pnode_idx = idx==0 ? 0 : 1
-    dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
-    dis.vfilesystem_create(node_name, { 'image' => FSIMG })
-    dis.viface_create(node_name, 'if0', { 'vnetwork' => vnet['name'] })
+  vnode_idx = 0
+  for pnode in pnodes
+    if vnode_idx >= vnodelist.length
+      break
+    end
+    for i in 1..2  # for each reserved disk in pnode
+      if vnode_idx >= vnodelist.length
+        break
+      end
+      # assign a disk to each vnode
+      dis.vnode_create(vnodelist[vnode_idx],
+        {'host' => pnode,
+        'vfilesystem' => {
+          'image' => FSIMG,
+          'shared' => false,  # todo: check if we can use a shared file system
+          'path' => "/mnt/edgekv-#{i}",
+        }
+        }, sshkeys)
+      dis.viface_create(vnodelist[vnode_idx], 'if0', { 'vnetwork' => vnet['name'] })
+      vnode_idx += 1
+    end
   end
+
+  # # Creating one virtual node per physical one
+  # # put vnode1 on pnode1 (coordinator), and the rest on pnode2
+  # vnodelist.each_with_index do |node_name, idx|
+  #   pnode_idx = idx==0 ? 0 : 1
+  #   # dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
+  #   dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx], 'vfilesystem' => \
+  #     {'image' => FSIMG, 'path' => '/mnt/edgekv-1/etcd-1'}}, sshkeys)
+  #   dis.vfilesystem_create(node_name, { 'image' => FSIMG })
+  #   dis.viface_create(node_name, 'if0', { 'vnetwork' => vnet['name'] })
+  #   dis.viface_create('etcd-1', 'if0', { 'vnetwork' => vnet['name'] })
+  # end
 
   puts 'Starting virtual nodes'
   # Starting the virtual nodes using the synchronous method
@@ -102,13 +107,13 @@ Distem.client do |dis|
 
   # puts "Updating vnodes latencies"
   cc = 0.035  # cloud-to-cloud latency
-  cl = 100    # cloud-to-client latency
+  cl = 60    # cloud-to-client latency
   ee = 3.2    # edge-to-edge latency
   el = 3.2    # edge-to-client latency
   
-  # latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
-  # # assume lat(node to itself) = 0
-  # # assume lat(client to client) = 0
+  latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
+  # assume lat(node to itself) = 0
+  # assume lat(client to client) = 0
 
   # # set edge latencies (in ms??)
   # for r in 0..NUM_VNODE-1
@@ -132,23 +137,23 @@ Distem.client do |dis|
 
 
   # set cloud latencies (in ms??)
-  # latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
-  # for r in 0..NUM_VNODE-1
-  #   for c in 0..NUM_VNODE-1
-  #     if r != c  # we let node-to-self latency = 0
-  #       if (r < server_vnodes.length) && (c < server_vnodes.length)
-  #         # cloud-to-cloud
-  #         latency_mat[r][c] = cc
-  #       elsif (r >= server_vnodes.length) ^ (c >= server_vnodes.length)  # xor
-  #         # cloud-to-client
-  #         latency_mat[r][c] = cl
-  #       # else: client-to-client already zeroed
-  #       end
-  #     end
-  #   end
-  # end
+  latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
+  for r in 0..NUM_VNODE-1
+    for c in 0..NUM_VNODE-1
+      if r != c  # we let node-to-self latency = 0
+        if (r < server_vnodes.length) && (c < server_vnodes.length)
+          # cloud-to-cloud
+          latency_mat[r][c] = cc
+        elsif (r >= server_vnodes.length) ^ (c >= server_vnodes.length)  # xor
+          # cloud-to-client
+          latency_mat[r][c] = cl
+        # else: client-to-client already zeroed
+        end
+      end
+    end
+  end
 
-  # dis.set_peers_latencies(vnodelist, latency_mat)
+  dis.set_peers_latencies(vnodelist, latency_mat)
 
   # start cloud experiment
 
