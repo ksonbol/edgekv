@@ -11,6 +11,10 @@ options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: platform_setup.rb [options]"
 
+  opts.on("-l", "--set-latency ENVIRONMENT", "Set latencies for 'cloud' or 'edge' environments") do |v|
+    options[:latency] = v
+  end
+
   opts.on("-s", "--setup", "perform platform setup") do |v|
     options[:setup] = v
   end
@@ -28,12 +32,12 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-NUM_NODES = 2
+NUM_NODES = 4
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
 # CLUSTER_NAME = 'grimoire'
-CLUSTER_NAME = 'grisou'
-WALL_TIME = '06:00:00'
+CLUSTER_NAME = 'graphite'
+WALL_TIME = '04:50:00'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
@@ -42,9 +46,11 @@ SRVR_EXP_FILE = 'server_exp.rb' # etcd servers
 EDGE_EXP_FILE = 'edge_exp.rb'
 CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
+YCSB_EXP_FILE = 'ycsb_exp.rb'
+SET_LAT_FILE = 'set_lat.rb'
 EDGEKV_FOLDER = "edgekv"
 DISK_PREP_SH = "disk_prep.sh"
-RESERVE_AFTER = 5 # minutes
+RESERVE_AFTER = 22 # minutes
 
 t = Time.now.round()
 t += RESERVE_AFTER * 60
@@ -62,20 +68,22 @@ if options[:setup]
     #                   :env => "debian9-x64-nfs", :subnets => [22,1], :keys => SSH_KEY_PATH)
 
     # only reserve the nodes
-    # job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME, :cluster => CLUSTER_NAME,
-    #                   :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
-    #                   # :reservation => RESERV_TIME,  # for future reservations
-    #                   :queue => JOB_QUEUE)
+    job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME,
+                      :cluster => CLUSTER_NAME,
+                      :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
+                      # :reservation => RESERV_TIME,  # for future reservations
+                      :queue => JOB_QUEUE)
+                      # :keys => SSH_KEY_PATH)
     
     # reserve nodes using resource (oar) options
     # job = g5k.reserve(:site => SITE_NAME, :resources => "slash_22=1+nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
     #                   :type => :deploy, :queue => JOB_QUEUE)
 
-    job = g5k.reserve(:site => SITE_NAME, :type => :deploy, :queue => JOB_QUEUE,
-                      :resources => "/slash_22=1+{(type='disk' or type='default') and cluster='#{CLUSTER_NAME}'} \
-                                     /nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
-                      # :reservation => RESERV_TIME,  # for future reservations
-                      :keys => SSH_KEY_PATH)
+    # job = g5k.reserve(:site => SITE_NAME, :type => :deploy, :queue => JOB_QUEUE,
+    #                   :resources => "/slash_22=1+{(type='disk' or type='default') and cluster='#{CLUSTER_NAME}'} \
+    #                                  /nodes=#{NUM_NODES},walltime=#{WALL_TIME}",
+    #                   # :reservation => RESERV_TIME,  # for future reservations
+                      # :keys => SSH_KEY_PATH)
     puts "Assigned nodes : #{job['assigned_nodes']}"
   else
     # otherwise, get the running job
@@ -88,17 +96,17 @@ if options[:setup]
     g5k.deploy(job, :env => "debian9-x64-nfs", :keys => SSH_KEY_PATH, :wait => true)
 
     # preparing the disks
-    nodes =job['assigned_nodes']
-    nodes.each_with_index do |node, idx|
-      puts "preparing disks on node #{node}"
-      system("scp #{DISK_PREP_SH} root@#{node}:/root")
-      system("ssh root@#{node} 'mkdir /mnt/edgekv-1 /mnt/edgekv-2 /mnt/edgekv-3 /mnt/edgekv-4'")
-      system("ssh root@#{node} 'chmod a+x #{DISK_PREP_SH}'")
-      system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdb /mnt/edgekv-1'")
+    # nodes =job['assigned_nodes']
+    # nodes.each_with_index do |node, idx|
+      # puts "preparing disks on node #{node}"
+      # system("scp #{DISK_PREP_SH} root@#{node}:/root")
+      # system("ssh root@#{node} 'mkdir /mnt/edgekv-1 /mnt/edgekv-2 /mnt/edgekv-3 /mnt/edgekv-4'")
+      # system("ssh root@#{node} 'chmod a+x #{DISK_PREP_SH}'")
+      # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdb /mnt/edgekv-1'")
       # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdc /mnt/edgekv-2'")
       # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sdd /mnt/edgekv-3'")
       # system("ssh root@#{node} 'sudo ./#{DISK_PREP_SH} /dev/sde /mnt/edgekv-4'")
-    end
+    # end
   end
 
   puts "Preparing node file"
@@ -110,9 +118,11 @@ if options[:setup]
     end
   }
 
-  puts "Setting up Distem"
-  system("bash -c '/home/ksonbol/distem-bootstrap -g --git-url 'https://github.com/ksonbol/distem.git' -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
+  # puts "Setting up Distem"
+  # two ways to use my modified version for editing path location
+  # system("bash -c 'distem-bootstrap -g --git-url https://github.com/ksonbol/distem.git -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
   # system("bash -c '/home/ksonbol/distem-bootstrap-karim -g -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
+  system("bash -c 'distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
 
   coordinator = nodes.first
 
@@ -123,7 +133,7 @@ if options[:setup]
     puts "gem installed successfully"
   end
 
-  # set up the virtual network
+#   # set up the virtual network
   puts "Setting up the virtual network"
   system("scp #{SETUP_FILE} root@#{coordinator}:/root")
     if $?.exitstatus == 0
@@ -150,7 +160,11 @@ if options[:play]
   out = %x(scp #{EDGE_EXP_FILE} root@#{coordinator}:/root)
   out = %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
   out = %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
+  out = %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
   out = %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
+  out = %x(scp -r go-ycsb/ root@#{coordinator}:/root)
+  out = %x(scp edgekv.conf root@#{coordinator}:/root)
+
   # out = %x(scp -r edge/ root@#{coordinator}:/root)
   # out = %x(scp -r client/ root@#{coordinator}:/root)
   if $?.exitstatus == 0
@@ -160,31 +174,35 @@ if options[:play]
 
   puts "Running experiments"
 
-  puts "Starting etcd servers"
-system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "etcd servers are running"
-  end
+# puts "Starting etcd servers"
+# system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
+#   if $?.exitstatus == 0
+#     puts "etcd servers are running"
+#   end
 
   # puts "Starting edge servers"
-  # out = %x(ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}')
+  # system("ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}'")
   # if $?.exitstatus == 0
   #   puts "edge servers are running"
   # end
-  # puts out
 
   # puts "Starting clients"
-  # out = %x(ssh #{coordinator} 'ruby #{CLI_EXP_FILE}')
-  # puts out
+  # system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
   # if $?.exitstatus == 0
   #   puts "clients are running"
   # end
 
   # puts "Starting gateway nodes"
-  # out = %x(ssh root@#{coordinator} 'ruby #{GW_EXP_FILE}')
+  # out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
   # if $?.exitstatus == 0
   #   puts "gateway nodes are running"
   # end
+
+  puts "Starting ycsb benchmark"
+  system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
+  if $?.exitstatus == 0
+    puts "YCSB experiments finished"
+  end
 end
 
 # def ssh_run(remote, cmd, desc="command")
@@ -195,3 +213,12 @@ end
 #   rec_flag = is_dir ? "-r " : ""
 #   success = system("scp #{rec_flag}#{files} #{dest}")
 # end
+
+if options[:latency]
+  env = options[:latency]
+  puts "Setting latency for environment #{env}"
+  system("ssh #{coordinator} 'ruby #{SET_LAT_FILE} #{env}'")
+  if $?.exitstatus == 0
+    puts "setting latency finished"
+  end
+end

@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,9 +26,9 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // CTRL-C->SIGINT, kill $PID->SIGTERM
 	server := edge.NewEdgeServer(*hostname, *port)
 	go server.Run(*tls, *certFile, *keyFile)
-	log.Println("Listening to client requests")
+	fmt.Println("Listening to client requests")
 	<-sigs
 	(*server).Close()
-	log.Println("Stopping the server...")
+	fmt.Println("Stopping the server...")
 	os.Exit(0)
 }

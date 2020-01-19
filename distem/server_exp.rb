@@ -4,6 +4,7 @@ gem 'ruby-cute', ">=0.6"
 require 'cute'
 require 'pp' # pretty print
 require 'distem'
+require_relative 'conf'
 
 SITE_NAME = "nancy"
 HOSTNAME = "g5k"
@@ -25,28 +26,14 @@ pnodes.map!{|n| n.split(".")[0]}  # remove the ".SITE_NAME.grid5000.fr" suffix
 raise 'This experiment requires at least two physical machines' unless pnodes.size >= 2
 coordinator = pnodes.first
 
-server_vnodes = ['etcd-1', 'etcd-2', 'etcd-3', 'etcd-4', 'etcd-5']
-client_vnodes = ['cli-1']
-vnodelist = server_vnodes + client_vnodes
-NUM_VNODE = vnodelist.length
-
 instance_name = "edge"
 cluster_token = "edge-cluster"
 
-serv_node_ips = Array.new(server_vnodes.length)
+serv_node_ips = Array.new(NUM_SERVERS)
 initial_cluster_str = "" # needed for etcd peers (servers)
 Distem.client do |dis|
-
-    # update latencies before experiment
-    # latency_mat = Array.new(NUM_VNODE) {Array.new(NUM_VNODE, 0)}
-    # assume lat(node to itself) = 0
-    # assume lat(client to client) = 0
-    # dis.set_peers_latencies(vnodelist, latency_mat)
-    # sleep(2)
-
-
     # get node IPs and prepare initial cluster conf
-    server_vnodes.each_with_index do |node, idx|
+    SERVER_VNODES.each_with_index do |node, idx|
         addr = dis.viface_info(node,'if0')['address'].split('/')[0]
         serv_node_ips[idx] = addr
         initial_cluster_str += "#{node}=http://#{addr}:2380,"
@@ -55,7 +42,7 @@ Distem.client do |dis|
     end
     initial_cluster_str = initial_cluster_str[0..-2]  # remove the last comma
     sleep(5)  # make sure old etcd instances are dead
-    server_vnodes.each_with_index do |node, idx|
+    SERVER_VNODES.each_with_index do |node, idx|
         # clean the log folder
         dis.vnode_execute(node, "rm -rf /root/etcdlog /root/#{node}.etcd; mkdir /root/etcdlog") 
         # dis.vnode_execute(node, "rm -rf /root/#{node}.etcd") 
@@ -75,14 +62,14 @@ Distem.client do |dis|
         # puts "etcd server #{idx+1} running"
     end
     sleep(7)
-    dis.vnode_execute(server_vnodes[0], "etcdctl put mykey myvalue")
+    dis.vnode_execute(SERVER_VNODES[0], "etcdctl put mykey myvalue")
     sleep(3)
-    out = dis.vnode_execute(server_vnodes[1], "etcdctl get mykey")
+    out = dis.vnode_execute(SERVER_VNODES[1], "etcdctl get mykey")
     if out.length>=2 && out[1] == "myvalue"
         puts "etcd cluster is working correctly"
     else
         puts "etcd cluster not setup correctly: '#{out}'"
     end
-    dis.vnode_execute(server_vnodes[2], "etcdctl del mykey")
+    dis.vnode_execute(SERVER_VNODES[2], "etcdctl del mykey")
 end
 # puts "all etcd servers are now running!"
