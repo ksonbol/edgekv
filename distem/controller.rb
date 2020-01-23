@@ -4,7 +4,7 @@ gem 'ruby-cute', ">=0.6"
 require 'cute'
 require 'pp' # pretty print
 require 'optparse'
-# require 'time'
+require_relative 'conf'
 
 options = {}
 
@@ -32,12 +32,11 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-NUM_NODES = 4
+NUM_NODES = NUM_VNODES
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
-# CLUSTER_NAME = 'grimoire'
-CLUSTER_NAME = 'graphite'
-WALL_TIME = '04:50:00'
+CLUSTER_NAME = 'grimoire'
+WALL_TIME = '05:30:00'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
@@ -48,6 +47,7 @@ CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
 YCSB_EXP_FILE = 'ycsb_exp.rb'
 SET_LAT_FILE = 'set_lat.rb'
+CONF_FILE = 'conf.rb'
 EDGEKV_FOLDER = "edgekv"
 DISK_PREP_SH = "disk_prep.sh"
 RESERVE_AFTER = 22 # minutes
@@ -110,11 +110,12 @@ if options[:setup]
   end
 
   puts "Preparing node file"
+
   nodes = job['assigned_nodes']
   NODEFILE = File.join(NODEFILES_DIR, job['uid'].to_s)
   open(NODEFILE, 'w') { |f|
     nodes.each do |node|
-      f.puts "#{node}\n"
+        f.puts "#{node}\n"
     end
   }
 
@@ -122,6 +123,7 @@ if options[:setup]
   # two ways to use my modified version for editing path location
   # system("bash -c 'distem-bootstrap -g --git-url https://github.com/ksonbol/distem.git -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
   # system("bash -c '/home/ksonbol/distem-bootstrap-karim -g -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
+  
   system("bash -c 'distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
 
   coordinator = nodes.first
@@ -136,12 +138,12 @@ if options[:setup]
 #   # set up the virtual network
   puts "Setting up the virtual network"
   system("scp #{SETUP_FILE} root@#{coordinator}:/root")
+  system("scp #{CONF_FILE} root@#{coordinator}:/root")
     if $?.exitstatus == 0
       puts "copied setup file"
     end
   
-  out = %x(ssh root@#{coordinator} 'ruby #{SETUP_FILE}')
-  puts out
+  system("ssh root@#{coordinator} 'ruby #{SETUP_FILE}'")
   if $?.exitstatus == 0
     puts "virtual network set up successfully"
   end
@@ -174,35 +176,35 @@ if options[:play]
 
   puts "Running experiments"
 
-# puts "Starting etcd servers"
-# system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
-#   if $?.exitstatus == 0
-#     puts "etcd servers are running"
-#   end
+puts "Starting etcd servers"
+system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
+  if $?.exitstatus == 0
+    puts "etcd servers are running"
+  end
 
-  # puts "Starting edge servers"
-  # system("ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}'")
-  # if $?.exitstatus == 0
-  #   puts "edge servers are running"
-  # end
+  puts "Starting edge servers"
+  system("ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}'")
+  if $?.exitstatus == 0
+    puts "edge servers are running"
+  end
 
-  # puts "Starting clients"
-  # system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
-  # if $?.exitstatus == 0
-  #   puts "clients are running"
-  # end
+  puts "Starting clients"
+  system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
+  if $?.exitstatus == 0
+    puts "clients are running"
+  end
+
+  puts "Copying ycsb files"
+  system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
+  if $?.exitstatus == 0
+    puts "YCSB files copied"
+  end
 
   # puts "Starting gateway nodes"
   # out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
   # if $?.exitstatus == 0
   #   puts "gateway nodes are running"
   # end
-
-  puts "Starting ycsb benchmark"
-  system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "YCSB experiments finished"
-  end
 end
 
 # def ssh_run(remote, cmd, desc="command")

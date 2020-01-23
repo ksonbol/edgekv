@@ -8,9 +8,9 @@ raise "Usage: ruby set_lat.rb ENVIRONMENT" unless ARGV.length == 1
   puts "Updating vnodes latencies"
   # unit is ms (millisecond)
   cc = 0.04  # cloud-to-cloud latency
-  cl = 60    # cloud-to-client latency
-  ee = 10    # edge-to-edge latency
-  el = 10    # edge-to-client latency
+  cl = 50    # cloud-to-client latency
+  ee = 5    # edge-to-edge latency
+  el = 5    # edge-to-client latency
   server_client = 0
   server_server = 0
 

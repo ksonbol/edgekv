@@ -34,7 +34,7 @@ coordinator = pnodes.first
 
 # This ruby hash table describes our virtual network
 vnet = {
-  'name' => 'testnet',
+  'name' => 'edgekvnet',
   'address' => subnet_addr
 }
 
@@ -53,7 +53,8 @@ Distem.client do |dis|
   # Start by creating the virtual network
   dis.vnetwork_create(vnet['name'], vnet['address'])
   puts 'Creating virtual nodes'
-  vnode_idx = 0
+  
+  # vnode_idx = 0
   # for pnode in pnodes
   #   if vnode_idx >= NUM_VNODES
   #     break
@@ -81,7 +82,6 @@ Distem.client do |dis|
   # # Creating one virtual node per physical one
   pnode_idx = 0
   VNODE_LIST.each_with_index do |node_name, idx|
-    # pnode_idx = idx==0 ? 0 : 1
     dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
     # dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx], 'vfilesystem' => \
     #   {'image' => FSIMG, 'path' => '/mnt/edgekv-1/etcd-1'}}, sshkeys)
@@ -91,6 +91,7 @@ Distem.client do |dis|
   end
 
   puts 'Starting virtual nodes'
+  sleep(2)
   # Starting the virtual nodes using the synchronous method
   VNODE_LIST.each do |nodename|
     dis.vnode_start(nodename)
@@ -106,7 +107,7 @@ Distem.client do |dis|
 
   # allow internet access for all nodes
   VNODE_LIST.each_with_index do |node, idx|
-        addr = dis.viface_info(node,'if0')['address'].split('/')[0]
+    addr = dis.viface_info(node,'if0')['address'].split('/')[0]
     dis.vnode_execute(node, "ifconfig if0 #{addr} netmask 255.252.0.0;route add default gw 10.147.255.254 dev if0")
   end
 end

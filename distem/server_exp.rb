@@ -29,6 +29,19 @@ coordinator = pnodes.first
 instance_name = "edge"
 cluster_token = "edge-cluster"
 
+# these values works fine for both cloud and edge (for now)
+hb_interval = 10   # heartbeat interval in ms
+elec_timeout = 100 # election timeout in ms
+
+# case SETUP
+# when "cloud"
+#     hb_interval = 10   # heartbeat interval in ms
+#     elec_timeout = 100 # election timeout in ms
+# when "edge"
+#     hb_interval = 15   # heartbeat interval (1.5xRTT) in ms
+#     elec_timeout = 150 # election timeout in ms
+# end
+
 serv_node_ips = Array.new(NUM_SERVERS)
 initial_cluster_str = "" # needed for etcd peers (servers)
 Distem.client do |dis|
@@ -48,7 +61,9 @@ Distem.client do |dis|
         # dis.vnode_execute(node, "rm -rf /root/#{node}.etcd") 
         addr = serv_node_ips[idx]
         # puts dis.vnode_execute(node, "etcd --version")
-        cmd =  "nohup /usr/local/bin/etcd --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \
+        cmd =  "nohup /usr/local/bin/etcd --heartbeat-interval=#{hb_interval} \
+        --election-timeout=#{elec_timeout} \
+        --name #{node} --initial-advertise-peer-urls http://#{addr}:2380 \
         --listen-peer-urls http://#{addr}:2380 \
         --listen-client-urls http://#{addr}:2379,http://127.0.0.1:2379 \
         --advertise-client-urls http://#{addr}:2379 \
