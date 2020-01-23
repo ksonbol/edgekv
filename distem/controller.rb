@@ -9,11 +9,7 @@ require_relative 'conf'
 options = {}
 
 OptionParser.new do |opts|
-  opts.banner = "Usage: platform_setup.rb [options]"
-
-  opts.on("-l", "--set-latency ENVIRONMENT", "Set latencies for 'cloud' or 'edge' environments") do |v|
-    options[:latency] = v
-  end
+  opts.banner = "Usage: ruby controller.rb [options]"
 
   opts.on("-s", "--setup", "perform platform setup") do |v|
     options[:setup] = v
@@ -23,12 +19,16 @@ OptionParser.new do |opts|
     options[:reserve] = v
   end
 
-  opts.on("-d", "--deploy", "deploy OS to pnodes") do |v|
+  opts.on("-d", "--deploy", "deploy filesystem to pnodes in setup") do |v|
     options[:deploy] = v
   end
 
-  opts.on("-p", "--play", "run experiment") do |v|
+  opts.on("-p", "--play", "start and test etcd and edge servers") do |v|
     options[:play] = v
+  end
+
+  opts.on("-l", "--set-latency ENVIRONMENT", "Set latencies for 'cloud' or 'edge' environments") do |v|
+    options[:latency] = v
   end
 end.parse!
 
