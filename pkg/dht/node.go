@@ -3,9 +3,11 @@ package dht
 import (
 	"crypto/sha1"
 	"fmt"
+	"github.com/ksonbol/edgekv/utils"
 )
 
-const hashBits = 128
+// IDBits is the number of bits contained in ID hashes
+const IDBits = 128
 
 // type DHT interface {
 // 	Successor(k string) *Router
@@ -15,19 +17,32 @@ const hashBits = 128
 
 // Node represents a node in the DHT overlay
 type Node struct {
-	ID   string
-	Hash string
-	// Transport *dhtServer
-	ft   []fingerEntry
-	pred *Node
+	Addr      string
+	ID        string
+	ft        []fingerEntry
+	transport *transport
+	pred      *Node
+	server    *Server
 }
 
-// NewNode creates a new DHT node, initializing hash and transport
-func NewNode(ID string) *Node {
-	n := &Node{ID: ID}
-	n.Hash = genHash(ID)
+// NewLocalNode creates a new DHT node, initializing ID and transport
+func NewLocalNode(addr string) *Node {
+	n := &Node{Addr: addr}
+	n.ID = genID(addr)
 	n.ft = initFT(n)
-	// TODO: initialize transport
+	hostname, port := utils.SplitAddress(addr)
+	n.server = NewServer(hostname, port, n)
+	n.server.RunInsecure()
+	return n
+}
+
+// NewRemoteNode returns a Node instance without the FT
+func NewRemoteNode(addr string, id string) *Node {
+	if id == "" {
+		id = genID(addr)
+	}
+	n := &Node{Addr: addr, ID: id}
+	n.transport = newTransport(n)
 	return n
 }
 
@@ -36,20 +51,29 @@ func (n *Node) Join(helperNode *Node) error {
 	if helperNode == nil {
 		// first node in dht
 		fillFTFirstNode(n)
-		n.pred = n
+		n.SetPredecessor(n)
 	} else {
-		// TODO: implement find successor RPC
-		succ, err := helperNode.findSuccessor(n.ft[0].start)
+		succ, err := helperNode.FindSuccessorRPC(n.ft[0].start)
 		if err != nil {
 			return err
 		}
 		n.ft[0].node = succ
-		n.pred = succ.Predecessor()
-		succ.pred = n
+		pred, err := succ.GetPredecessorRPC()
+		if err != nil {
+			return err
+		}
+		n.SetPredecessor(pred)
+		// TODO: change this to an RPC call
+		err = succ.SetPredecessorRPC(n)
+		if err != nil {
+			return err
+		}
 		err = fillFT(n, helperNode)
 		if err != nil {
 			return err
 		}
+		// TODO: update other nodes
+		// TODO: copy keys from other nodes
 	}
 	return nil
 }
@@ -59,13 +83,39 @@ func (n *Node) Successor() *Node {
 	return n.ft[0].node
 }
 
+// GetSuccessorRPC returns the successor of n using an RPC call
+func (n *Node) GetSuccessorRPC() (*Node, error) {
+	return n.transport.getSuccessor()
+}
+
+// GetPredecessorRPC returns the predecessor of n using an RPC call
+func (n *Node) GetPredecessorRPC() (*Node, error) {
+	return n.transport.getPredecessor()
+}
+
+// SetPredecessorRPC sets the the predecessor of n using an RPC call
+func (n *Node) SetPredecessorRPC(node *Node) error {
+	return n.transport.setPredecessor(node)
+}
+
+// FindSuccessorRPC finds the successor of a key an RPC call to n
+// this may initiate more RPC calls
+func (n *Node) FindSuccessorRPC(id string) (*Node, error) {
+	return n.transport.findSuccessor(id)
+}
+
 // Predecessor returns the predecessor of node n
 func (n *Node) Predecessor() *Node {
 	return n.pred
 }
 
-// FindSuccessor uses DHT RPCs to find the successor of a specific key (hash)
-func (n *Node) findSuccessor(hash string) (*Node, error) {
+// SetPredecessor sets the predecessor of node n
+func (n *Node) SetPredecessor(pred *Node) {
+	n.pred = pred
+}
+
+// FindSuccessor uses DHT RPCs to find the successor of a specific key (ID)
+func (n *Node) findSuccessor(ID string) (*Node, error) {
 	// TODO: implement this
 	return n, nil
 }
@@ -75,7 +125,7 @@ func (n *Node) Leave() error {
 	return nil
 }
 
-func genHash(s string) string {
+func genID(s string) string {
 	h := sha1.New()
 	h.Write([]byte(s))
 	return fmt.Sprintf("%x", h.Sum(nil))

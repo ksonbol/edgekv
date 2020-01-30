@@ -11,19 +11,19 @@ type fingerEntry struct {
 }
 
 func initFT(node *Node) []fingerEntry {
-	ft := make([]fingerEntry, hashBits)
+	ft := make([]fingerEntry, IDBits)
 	for i := range ft {
-		ft[i] = fingerEntry{start: getFEStart(node.Hash, i)}
+		ft[i] = fingerEntry{start: getFEStart(node.ID, i)}
 	}
 	return ft
 }
 
 func getFEStart(n string, idx int) string {
-	startInt, _ := new(big.Int).SetString(n, 16)              // n
-	twoToI := big.NewInt(int64(math.Exp2(float64(idx))))      // 2^i
-	startInt.Add(startInt, twoToI)                            // (n + 2^i)
-	twoToM := big.NewInt(int64(math.Exp2(float64(hashBits)))) // 2^m
-	startInt.Mod(startInt, twoToM)                            // (n + 2^i) mod 2^m
+	startInt, _ := new(big.Int).SetString(n, 16)            // n
+	twoToI := big.NewInt(int64(math.Exp2(float64(idx))))    // 2^i
+	startInt.Add(startInt, twoToI)                          // (n + 2^i)
+	twoToM := big.NewInt(int64(math.Exp2(float64(IDBits)))) // 2^m
+	startInt.Mod(startInt, twoToM)                          // (n + 2^i) mod 2^m
 	return startInt.Text(16)
 }
 
@@ -32,10 +32,10 @@ func getFEStart(n string, idx int) string {
 func fillFT(n *Node, helperNode *Node) error {
 	// first entry must have been set before to successor
 	for i := 1; i < len(n.ft); i++ {
-		if inIntervalHex(n.ft[i].start, n.Hash, n.ft[i-1].node.Hash) {
+		if inIntervalHex(n.ft[i].start, n.ID, n.ft[i-1].node.ID) {
 			n.ft[i].node = n.ft[i-1].node
 		} else {
-			succ, err := helperNode.findSuccessor(n.ft[i].start)
+			succ, err := helperNode.FindSuccessorRPC(n.ft[i].start)
 			if err != nil {
 				return err
 			}

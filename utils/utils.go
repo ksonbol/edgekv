@@ -1,6 +1,10 @@
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // // DataType of the data stored in the kv-store
 // type DataType bool
@@ -27,4 +31,24 @@ type KeyNotFoundError struct {
 
 func (e *KeyNotFoundError) Error() string {
 	return fmt.Sprintf("Key not found: %s", e.Key)
+}
+
+// GetHostname return the hostname/IP part of an address string
+func GetHostname(addr string) string {
+	return strings.Split(addr, ":")[0]
+}
+
+// GetPort returns the port number part of an address string
+func GetPort(addr string) int {
+	s := strings.Split(addr, ":")
+	port, _ := strconv.Atoi(s[1])
+	return port
+}
+
+// SplitAddress extracts and returns (hostname, port) from address string
+func SplitAddress(addr string) (string, int) {
+	s := strings.Split(addr, ":")
+	hostname := s[0]
+	port, _ := strconv.Atoi(s[1])
+	return hostname, port
 }
