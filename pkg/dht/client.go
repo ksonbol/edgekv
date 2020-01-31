@@ -95,6 +95,15 @@ func (c *Client) FindSuccessor(id string) (*Node, error) {
 	return NewRemoteNode(res.GetAddr(), res.GetId()), err
 }
 
+// ClosestPrecedingFinger finds the closest finger preceding id
+func (c *Client) ClosestPrecedingFinger(id string) (*Node, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.ID{Id: id}
+	res, err := c.rpcClient.ClosestPrecedingFinger(ctx, req)
+	return NewRemoteNode(res.GetAddr(), res.GetId()), err
+}
+
 // GetKV gets the value associated with a key from the remote node
 func (c *Client) GetKV(key string) (string, error) {
 	// TODO: should we change this timeout?

@@ -77,3 +77,9 @@ func inIntervalHex(key string, start string, end string) bool {
 	endInt, _ := new(big.Int).SetString(end, 16)
 	return inInterval(keyInt, startInt, endInt)
 }
+
+func incID(id string) string {
+	idInt, _ := new(big.Int).SetString(id, 16)
+	idInt.Add(idInt, big.NewInt(1))
+	return idInt.Text(16)
+}

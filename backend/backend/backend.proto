@@ -21,7 +21,8 @@ service Backend {
     rpc SetPredecessor(Node) returns (EmptyRes) {}
     // find successor node to ID, may initiate other RPC calls
     rpc FindSuccessor(ID) returns (Node) {}
-
+    // find the closest preeceding finger to id
+    rpc ClosestPrecedingFinger(ID) returns (Node) {}
     // storage RPCs
     // get value associated with key from remote edgekv group
     rpc GetKV(GetRequest) returns (GetResponse) {}

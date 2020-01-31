@@ -53,3 +53,8 @@ func (t *transport) findSuccessor(id string) (*Node, error) {
 	cli := t.getRemote()
 	return cli.FindSuccessor(id)
 }
+
+func (t *transport) closestPrecedingFinger(id string) (*Node, error) {
+	cli := t.getRemote()
+	return cli.ClosestPrecedingFinger(id)
+}

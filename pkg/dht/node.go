@@ -78,11 +78,6 @@ func (n *Node) Join(helperNode *Node) error {
 	return nil
 }
 
-// Successor returns the successor of node n
-func (n *Node) Successor() *Node {
-	return n.ft[0].node
-}
-
 // GetSuccessorRPC returns the successor of n using an RPC call
 func (n *Node) GetSuccessorRPC() (*Node, error) {
 	return n.transport.getSuccessor()
@@ -104,6 +99,16 @@ func (n *Node) FindSuccessorRPC(id string) (*Node, error) {
 	return n.transport.findSuccessor(id)
 }
 
+// ClosestPrecedingFingerRPC returns the closest node that precedes id
+func (n *Node) ClosestPrecedingFingerRPC(id string) (*Node, error) {
+	return n.transport.closestPrecedingFinger(id)
+}
+
+// Successor returns the successor of node n
+func (n *Node) Successor() *Node {
+	return n.ft[0].node
+}
+
 // Predecessor returns the predecessor of node n
 func (n *Node) Predecessor() *Node {
 	return n.pred
@@ -114,10 +119,37 @@ func (n *Node) SetPredecessor(pred *Node) {
 	n.pred = pred
 }
 
-// FindSuccessor uses DHT RPCs to find the successor of a specific key (ID)
-func (n *Node) findSuccessor(ID string) (*Node, error) {
-	// TODO: implement this
-	return n, nil
+// findPredecessor uses DHT RPCs to find the predecessor of a specific key (ID)
+func (n *Node) findPredecessor(ID string) (*Node, error) {
+	next := n
+	err := *new(error)
+	succ := next.Successor() // current node, no need for RPC yet
+	// while id not in (next.ID, next.Successor.ID]
+	for !inIntervalHex(ID, incID(next.ID), incID(succ.ID)) {
+		if next == n {
+			next = next.closestPrecedingFinger(ID)
+		} else {
+			next, err = next.ClosestPrecedingFingerRPC(ID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		succ, err = next.GetSuccessorRPC()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return next, nil
+}
+
+func (n *Node) closestPrecedingFinger(ID string) *Node {
+	for i := len(n.ft) - 1; i >= 0; i-- {
+		fingerNode := n.ft[i].node
+		if inIntervalHex(fingerNode.ID, incID(n.ID), ID) {
+			return fingerNode
+		}
+	}
+	return n
 }
 
 // Leave the DHT ring and stop the node
