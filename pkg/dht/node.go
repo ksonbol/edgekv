@@ -33,16 +33,17 @@ func NewLocalNode(addr string) *Node {
 	hostname, port := utils.SplitAddress(addr)
 	n.server = NewServer(hostname, port, n)
 	n.server.RunInsecure()
+	n.transport = newTransport(n, nil, nil)
 	return n
 }
 
 // NewRemoteNode returns a Node instance without the FT
-func NewRemoteNode(addr string, id string) *Node {
+func NewRemoteNode(addr string, id string, localTransport *transport) *Node {
 	if id == "" {
 		id = genID(addr)
 	}
 	n := &Node{Addr: addr, ID: id}
-	n.transport = newTransport(n)
+	n.transport = newTransport(n, localTransport.remotes, localTransport.mux)
 	return n
 }
 

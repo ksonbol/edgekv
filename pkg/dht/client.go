@@ -56,23 +56,21 @@ func (c *Client) Close() error {
 }
 
 // GetSuccessor returns the successor of the server
-func (c *Client) GetSuccessor() (*Node, error) {
+func (c *Client) GetSuccessor() (*pb.Node, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
 	req := &pb.EmptyReq{}
-	res, err := c.rpcClient.GetSuccessor(ctx, req)
-	return NewRemoteNode(res.GetAddr(), res.GetId()), err
+	return c.rpcClient.GetSuccessor(ctx, req)
 }
 
 // GetPredecessor returns the predecessor of the server
-func (c *Client) GetPredecessor() (*Node, error) {
+func (c *Client) GetPredecessor() (*pb.Node, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
 	req := &pb.EmptyReq{}
-	res, err := c.rpcClient.GetPredecessor(ctx, req)
-	return NewRemoteNode(res.GetAddr(), res.GetId()), err
+	return c.rpcClient.GetPredecessor(ctx, req)
 }
 
 // SetPredecessor sets the predecessor of the server
@@ -86,22 +84,20 @@ func (c *Client) SetPredecessor(node *Node) error {
 }
 
 // FindSuccessor finds the successor of id
-func (c *Client) FindSuccessor(id string) (*Node, error) {
+func (c *Client) FindSuccessor(id string) (*pb.Node, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
 	req := &pb.ID{Id: id}
-	res, err := c.rpcClient.FindSuccessor(ctx, req)
-	return NewRemoteNode(res.GetAddr(), res.GetId()), err
+	return c.rpcClient.FindSuccessor(ctx, req)
 }
 
 // ClosestPrecedingFinger finds the closest finger preceding id
-func (c *Client) ClosestPrecedingFinger(id string) (*Node, error) {
+func (c *Client) ClosestPrecedingFinger(id string) (*pb.Node, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
 	req := &pb.ID{Id: id}
-	res, err := c.rpcClient.ClosestPrecedingFinger(ctx, req)
-	return NewRemoteNode(res.GetAddr(), res.GetId()), err
+	return c.rpcClient.ClosestPrecedingFinger(ctx, req)
 }
 
 // GetKV gets the value associated with a key from the remote node
