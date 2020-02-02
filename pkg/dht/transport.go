@@ -87,7 +87,8 @@ func (t *transport) closestPrecedingFinger(id string) (*Node, error) {
 	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
 }
 
-func (t *transport) close() {
+// closeRemote closes the remote connection, if no connection exists, this is a no-op
+func (t *transport) closeRemote() {
 	cli := t.getRemoteIfExists()
 	if cli != nil {
 		cli.Close()
@@ -95,4 +96,14 @@ func (t *transport) close() {
 		delete(t.remotes, t.node.Addr)
 		t.mux.Unlock()
 	}
+}
+
+// shutdown local node, closes all connections to remote nodes
+func (t *transport) shutdown() {
+	t.mux.Lock()
+	for _, cli := rnage t.remotes {
+		cli.Close()
+	}
+	t.remotes = nil
+	t.mux.Unlock()
 }

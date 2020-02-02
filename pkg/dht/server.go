@@ -15,10 +15,11 @@ import (
 // Server is a DHT server
 type Server struct {
 	pb.UnimplementedBackendServer
-	mux      sync.RWMutex
-	hostname string
-	port     int
-	node     *Node
+	mux        sync.RWMutex
+	hostname   string
+	port       int
+	node       *Node
+	grpcServer *grpc.Server
 }
 
 // NewServer return a new DHT server
@@ -50,9 +51,9 @@ func (s *Server) Run(tls bool, certFile string, keyFile string) error {
 		}
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
-	grpcServer := grpc.NewServer(opts...)
-	pb.RegisterBackendServer(grpcServer, s)
-	grpcServer.Serve(lis)
+	s.grpcServer = grpc.NewServer(opts...)
+	pb.RegisterBackendServer(s.grpcServer, s)
+	s.grpcServer.Serve(lis)
 	return nil
 }
 
@@ -105,4 +106,8 @@ func (s *Server) FindSuccessor(ctx context.Context, req *pb.ID) (*pb.Node, error
 func (s *Server) ClosestPrecedingFinger(ctx context.Context, req *pb.ID) (*pb.Node, error) {
 	n := s.node.closestPrecedingFinger(req.GetId())
 	return &pb.Node{Id: n.ID, Addr: n.Addr}, nil
+}
+
+func (s *Server) stop() {
+	s.grpcServer.GracefulStop() // wait for pending RPCs to finish, then stop
 }

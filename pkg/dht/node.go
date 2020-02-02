@@ -155,6 +155,21 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 
 // Leave the DHT ring and stop the node
 func (n *Node) Leave() error {
+	return n.shutDown()
+	// TODO: any other tasks?
+	// inform other nodes or copy keys to them before leaving?
+}
+
+func (n *Node) shutDown() error {
+	if n.server != nil {
+		n.server.stop()
+	}
+	for _, conn := range n.transport.remotes {
+		conn.Close()
+	}
+	n.transport.shutdown()
+	n.ft = nil
+	n.pred = nil
 	return nil
 }
 

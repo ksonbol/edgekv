@@ -108,7 +108,7 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	// TODO: local vs global data
 	delRes, err := s.etcdClient.Delete(ctx, req.GetKey())
-	cancel()
+	cancel() // as given in etcd docs, wouldnt do harm anyway
 	returnErr = checkError(err)
 	if returnErr == nil {
 		if delRes.Deleted < 1 {
