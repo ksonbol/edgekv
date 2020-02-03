@@ -73,16 +73,6 @@ func (c *Client) GetPredecessor() (*pb.Node, error) {
 	return c.rpcClient.GetPredecessor(ctx, req)
 }
 
-// SetPredecessor sets the predecessor of the server
-func (c *Client) SetPredecessor(node *Node) error {
-	// TODO: should we change this timeout?
-	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
-	defer cancel()
-	req := &pb.Node{Addr: node.Addr, Id: node.ID}
-	_, err := c.rpcClient.SetPredecessor(ctx, req)
-	return err
-}
-
 // FindSuccessor finds the successor of id
 func (c *Client) FindSuccessor(id string) (*pb.Node, error) {
 	// TODO: should we change this timeout?
@@ -98,6 +88,15 @@ func (c *Client) ClosestPrecedingFinger(id string) (*pb.Node, error) {
 	defer cancel()
 	req := &pb.ID{Id: id}
 	return c.rpcClient.ClosestPrecedingFinger(ctx, req)
+}
+
+func (c *Client) Notify(node *Node) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.Node{Id: node.ID, Addr: node.Addr}
+	_, err := c.rpcClient.Notify(ctx, req)
+	return err
+
 }
 
 // GetKV gets the value associated with a key from the remote node

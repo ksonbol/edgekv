@@ -75,37 +75,30 @@ func (s *Server) GetPredecessor(ctx context.Context, req *pb.EmptyReq) (*pb.Node
 	return &pb.Node{Id: n.ID, Addr: n.Addr}, nil
 }
 
-// SetPredecessor returns predecessor of this node
-func (s *Server) SetPredecessor(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error) {
-	n := NewRemoteNode(req.GetAddr(), req.GetId())
-	s.node.SetPredecessor(n)
-	return &pb.EmptyRes{}, nil
-}
-
 // FindSuccessor returns predecessor of this node
 func (s *Server) FindSuccessor(ctx context.Context, req *pb.ID) (*pb.Node, error) {
-	n, err := s.node.findPredecessor(req.GetId())
-	if err != nil {
-		return nil, err
-	}
-	succ, err := n.GetSuccessorRPC()
+	succ, err := s.node.findSuccessor(req.GetId())
 	if err != nil {
 		return nil, err
 	}
 	return &pb.Node{Id: succ.ID, Addr: succ.Addr}, nil
-	// // if id is in (Predecessor.ID, n.ID], id is responsibility of n
-	// if inIntervalHex(req.GetId(), incID(s.node.Predecessor().ID), incID(s.node.ID)) {
-	// 	return &pb.Node{Id: s.node.ID, Addr: s.node.Addr}, nil
-	// } else {
-	// 	// send anither RPC call?
-	// }
-	// return &pb.Node{Id: id, Addr: addr}, err
 }
 
 // ClosestPrecedingFinger returns the closest node preceding id
 func (s *Server) ClosestPrecedingFinger(ctx context.Context, req *pb.ID) (*pb.Node, error) {
 	n := s.node.closestPrecedingFinger(req.GetId())
 	return &pb.Node{Id: n.ID, Addr: n.Addr}, nil
+}
+
+// Notify this node of a possible predecessor change
+func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error) {
+	pred := s.node.Predecessor()
+	// if pred is nil or n` in (pred, n)
+	if (pred == nil) || inIntervalHex(req.GetId(), incID(pred.ID), s.node.ID) {
+		new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.transport)
+		s.node.SetPredecessor(new)
+	}
+	return &pb.EmptyRes{}, nil
 }
 
 func (s *Server) stop() {

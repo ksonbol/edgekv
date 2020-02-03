@@ -70,11 +70,6 @@ func (t *transport) getPredecessor() (*Node, error) {
 	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
 }
 
-func (t *transport) setPredecessor(node *Node) error {
-	cli := t.getRemote()
-	return cli.SetPredecessor(node)
-}
-
 func (t *transport) findSuccessor(id string) (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.FindSuccessor(id)
@@ -85,6 +80,12 @@ func (t *transport) closestPrecedingFinger(id string) (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.ClosestPrecedingFinger(id)
 	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
+}
+
+func (t *transport) notify(node *Node) error {
+	cli := t.getRemote()
+	err := cli.Notify(node)
+	return err
 }
 
 // closeRemote closes the remote connection, if no connection exists, this is a no-op
@@ -101,7 +102,7 @@ func (t *transport) closeRemote() {
 // shutdown local node, closes all connections to remote nodes
 func (t *transport) shutdown() {
 	t.mux.Lock()
-	for _, cli := rnage t.remotes {
+	for _, cli := range t.remotes {
 		cli.Close()
 	}
 	t.remotes = nil
