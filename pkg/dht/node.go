@@ -24,13 +24,14 @@ type Node struct {
 	shutdownCh chan struct{}
 }
 
-func NewBasicNode(addr string, id string) *Node {
+// newBasicNode creates a node with the essential parameters
+func newBasicNode(addr string, id string) *Node {
 	return &Node{Addr: addr, ID: id, shutdownCh: make(chan struct{})}
 }
 
 // NewLocalNode creates a new DHT node, initializing ID and transport
 func NewLocalNode(addr string) *Node {
-	n := NewBasicNode(addr, genID(addr))
+	n := newBasicNode(addr, genID(addr))
 	n.ft = initFT(n)
 	hostname, port := utils.SplitAddress(addr)
 	n.server = NewServer(hostname, port, n)
@@ -44,7 +45,7 @@ func NewRemoteNode(addr string, id string, localTransport *transport) *Node {
 	if id == "" {
 		id = genID(addr)
 	}
-	n := NewBasicNode(addr, id)
+	n := newBasicNode(addr, id)
 	n.transport = newTransport(n, localTransport.remotes, localTransport.mux)
 	return n
 }
@@ -84,6 +85,7 @@ func (n *Node) ClosestPrecedingFingerRPC(id string) (*Node, error) {
 	return n.transport.closestPrecedingFinger(id)
 }
 
+// NotifyRPC notify node that n should be their predecessor
 func (n *Node) NotifyRPC(node *Node) error {
 	return n.transport.notify(node)
 }
@@ -116,7 +118,7 @@ func (n *Node) stabilize() {
 		case <-ticker.C:
 			x, err := n.Successor().GetPredecessorRPC()
 			if err != nil {
-				log.Fatalf("Failed to run the stabilizer algorithm", err)
+				log.Fatalf("Failed to run the stabilizer algorithm %v", err)
 			}
 			// if x in (n, successor)
 			if inIntervalHex(x.ID, incID(n.ID), n.Successor().ID) {
@@ -140,7 +142,7 @@ func (n *Node) fixFingers() {
 			i := rand.Intn(IDBits)
 			succ, err := n.findSuccessor(n.ft[i].start)
 			if err != nil {
-				log.Fatalf("Failed to get successor while running fixFingers", err)
+				log.Fatalf("Failed to get successor while running fixFingers %v", err)
 			}
 			n.ft[i].node = succ
 		case <-n.shutdownCh:

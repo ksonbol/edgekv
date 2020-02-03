@@ -90,6 +90,7 @@ func (c *Client) ClosestPrecedingFinger(id string) (*pb.Node, error) {
 	return c.rpcClient.ClosestPrecedingFinger(ctx, req)
 }
 
+// Notify the remote server that we should be their predecessor
 func (c *Client) Notify(node *Node) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()

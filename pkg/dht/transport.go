@@ -36,9 +36,8 @@ func (t *transport) getRemoteIfExists() *Client {
 	t.mux.RUnlock()
 	if ok {
 		return cli
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (t *transport) setRemote() *Client {
