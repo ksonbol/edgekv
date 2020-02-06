@@ -77,6 +77,7 @@ func (c *Client) GetPredecessor() (*pb.Node, error) {
 func (c *Client) FindSuccessor(id string) (*pb.Node, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	// ctx = context.WithValue(ctx, "userAddr", "sfsdf")
 	defer cancel()
 	req := &pb.ID{Id: id}
 	return c.rpcClient.FindSuccessor(ctx, req)

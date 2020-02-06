@@ -53,7 +53,7 @@ func (s *Server) Run(tls bool, certFile string, keyFile string) error {
 	}
 	s.grpcServer = grpc.NewServer(opts...)
 	pb.RegisterBackendServer(s.grpcServer, s)
-	s.grpcServer.Serve(lis)
+	go s.grpcServer.Serve(lis)
 	return nil
 }
 
@@ -64,7 +64,6 @@ func (s *Server) RunInsecure() error {
 
 // GetSuccessor returns successor of this node
 func (s *Server) GetSuccessor(ctx context.Context, req *pb.EmptyReq) (*pb.Node, error) {
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	n := s.node.Successor()
 	return &pb.Node{Id: n.ID, Addr: n.Addr}, nil
 }
@@ -72,11 +71,23 @@ func (s *Server) GetSuccessor(ctx context.Context, req *pb.EmptyReq) (*pb.Node, 
 // GetPredecessor returns predecessor of this node
 func (s *Server) GetPredecessor(ctx context.Context, req *pb.EmptyReq) (*pb.Node, error) {
 	n := s.node.Predecessor()
+	if n == nil {
+		return &pb.Node{Id: s.node.ID, Addr: s.node.Addr}, nil // return self
+	}
 	return &pb.Node{Id: n.ID, Addr: n.Addr}, nil
 }
 
 // FindSuccessor returns predecessor of this node
 func (s *Server) FindSuccessor(ctx context.Context, req *pb.ID) (*pb.Node, error) {
+	// todo get peer info from context (we need requester node ID)
+	// todo send requester node ID in context?
+	// senderID := (ctx.Value("senderId")).string
+	// senderAddr := ctx.Value("senderAddr")
+	// if s.node.Successor().ID == s.node.ID {
+	// 	n := NewRemoteNode(senderAddr, senderID, s.node.Transport)
+	// 	s.node.SetSuccessor(n)
+	// }
+	// peer, ok := peer.FromContext(ctx)
 	succ, err := s.node.findSuccessor(req.GetId())
 	if err != nil {
 		return nil, err
@@ -93,11 +104,21 @@ func (s *Server) ClosestPrecedingFinger(ctx context.Context, req *pb.ID) (*pb.No
 // Notify this node of a possible predecessor change
 func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error) {
 	pred := s.node.Predecessor()
+	// if pred == s.node {
+	// 	defer close(s.node.nodeJoinCh) // other nodes have joined the system
+	// }
 	// if pred is nil or n` in (pred, n)
-	if (pred == nil) || inIntervalHex(req.GetId(), incID(pred.ID), s.node.ID) {
-		new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.transport)
-		s.node.SetPredecessor(new)
+	if pred.ID != req.GetId() { // for readability and to avoid uneeded calculations
+		if (pred == s.node) || inInterval(req.GetId(), incID(pred.ID), s.node.ID) {
+			new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.Transport)
+			// log.Printf("Replacing node %s old predecessor (%s) with %s\n",
+			// s.node.ID, pred.ID, new.ID)
+			s.node.SetPredecessor(new)
+		}
 	}
+	s.node.closeOnce.Do(func() {
+		close(s.node.nodeJoinCh) // other nodes have joined the system
+	})
 	return &pb.EmptyRes{}, nil
 }
 

@@ -24,7 +24,7 @@ func getFEStart(n string, idx int) string {
 	startInt.Add(startInt, twoToI)                          // (n + 2^i)
 	twoToM := big.NewInt(int64(math.Exp2(float64(IDBits)))) // 2^m
 	startInt.Mod(startInt, twoToM)                          // (n + 2^i) mod 2^m
-	return startInt.Text(16)
+	return appendZeros(startInt.Text(16), IDChars)
 }
 
 // fillFT fills all entries of FT except for first one
@@ -32,7 +32,7 @@ func getFEStart(n string, idx int) string {
 func fillFT(n *Node, helperNode *Node) error {
 	// first entry must have been set before to successor
 	for i := 1; i < len(n.ft); i++ {
-		if inIntervalHex(n.ft[i].start, n.ID, n.ft[i-1].node.ID) {
+		if inInterval(n.ft[i].start, n.ID, n.ft[i-1].node.ID) {
 			n.ft[i].node = n.ft[i-1].node
 		} else {
 			succ, err := helperNode.FindSuccessorRPC(n.ft[i].start)
@@ -52,34 +52,33 @@ func fillFTFirstNode(node *Node) {
 }
 
 // inInterval checks if key is in interval [start, end)
-func inInterval(key *big.Int, start *big.Int, end *big.Int) bool {
-	keyText := key.Text(10)
-	stText := start.Text(10)
-	endText := end.Text(10)
-	if stText < endText {
-		if (keyText >= stText) && (keyText < endText) {
+// where key, start, and end are in hexadecimal encoding
+func inInterval(key string, start string, end string) bool {
+	if start == end {
+		return false
+	}
+	if start < end {
+		if (key >= start) && (key < end) {
 			return true
 		}
 	} else {
 		// 0 is somewhere between start and end
-		if (keyText >= stText) || (keyText < endText) {
+		if (key >= start) || (key < end) {
 			return true
 		}
 	}
 	return false
 }
 
-// inIntervalHex checks if key is in interval [start, end)
-// where key, start, and end are in hexadecimal notation
-func inIntervalHex(key string, start string, end string) bool {
-	keyInt, _ := new(big.Int).SetString(key, 16)
-	startInt, _ := new(big.Int).SetString(start, 16)
-	endInt, _ := new(big.Int).SetString(end, 16)
-	return inInterval(keyInt, startInt, endInt)
-}
-
 func incID(id string) string {
 	idInt, _ := new(big.Int).SetString(id, 16)
 	idInt.Add(idInt, big.NewInt(1))
-	return idInt.Text(16)
+	return appendZeros(idInt.Text(16), IDChars)
+}
+
+func appendZeros(s string, length int) string {
+	for len(s) < length {
+		s = "0" + s
+	}
+	return s
 }
