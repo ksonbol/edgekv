@@ -60,25 +60,25 @@ func (t *transport) setRemoteWithCredentials(serverAddr string, tls bool, caFile
 func (t *transport) getSuccessor() (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.GetSuccessor()
-	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
+	return NewRemoteNode(res.GetAddr(), res.GetId(), t, nil), err
 }
 
 func (t *transport) getPredecessor() (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.GetPredecessor()
-	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
+	return NewRemoteNode(res.GetAddr(), res.GetId(), t, nil), err
 }
 
 func (t *transport) findSuccessor(id string) (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.FindSuccessor(id)
-	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
+	return NewRemoteNode(res.GetAddr(), res.GetId(), t, nil), err
 }
 
 func (t *transport) closestPrecedingFinger(id string) (*Node, error) {
 	cli := t.getRemote()
 	res, err := cli.ClosestPrecedingFinger(id)
-	return NewRemoteNode(res.GetAddr(), res.GetId(), t), err
+	return NewRemoteNode(res.GetAddr(), res.GetId(), t, nil), err
 }
 
 func (t *transport) notify(node *Node) error {

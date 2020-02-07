@@ -19,15 +19,15 @@ var (
 func main() {
 	flag.Parse()
 	fmt.Println("Starting the program")
-	node := dht.NewLocalNode(*nodeAddr)
+	node := dht.NewLocalNode(*nodeAddr, nil)
 	fmt.Println("Created local nodes")
-	node2 := dht.NewLocalNode(*node2Addr)
-	node3 := dht.NewLocalNode(*node3Addr)
-	node4 := dht.NewLocalNode(*node4Addr)
+	node2 := dht.NewLocalNode(*node2Addr, nil)
+	node3 := dht.NewLocalNode(*node3Addr, nil)
+	node4 := dht.NewLocalNode(*node4Addr, nil)
 	m := map[int]*dht.Node{1: node, 2: node2, 3: node3, 4: node4}
-	helperNode2 := dht.NewRemoteNode(node.Addr, node.ID, node2.Transport)
-	helperNode3 := dht.NewRemoteNode(node.Addr, node.ID, node3.Transport)
-	helperNode4 := dht.NewRemoteNode(node.Addr, node.ID, node4.Transport)
+	helperNode2 := dht.NewRemoteNode(node.Addr, node.ID, node2.Transport, nil)
+	helperNode3 := dht.NewRemoteNode(node.Addr, node.ID, node3.Transport, nil)
+	helperNode4 := dht.NewRemoteNode(node.Addr, node.ID, node4.Transport, nil)
 	time.Sleep(2 * time.Second)
 	node.Join(nil)
 	node2.Join(helperNode2)
@@ -47,7 +47,7 @@ func main() {
 		if !ok {
 			log.Fatalf("Such node does not exist!")
 		}
-		fmt.Printf("Node %d\n with ID: %s\n", nodeNum, n.ID)
+		fmt.Printf("Node %d\n with Addr %s, ID: %s\n", nodeNum, n.Addr, n.ID)
 		n.PrintFT()
 		fmt.Printf("Successor: %s, Predecessor: %s\n", n.Successor().ID, n.Predecessor().ID)
 		time.Sleep(5 * time.Second)

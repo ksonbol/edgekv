@@ -16,11 +16,11 @@ var (
 func run() {
 	flag.Parse()
 	fmt.Println("Starting  the program")
-	node := dht.NewLocalNode(*nodeAddress)
+	node := dht.NewLocalNode(*nodeAddress, nil)
 	fmt.Println("Created local nodes")
 	var helperNode *dht.Node
 	if *helperAddr != "" {
-		helperNode = dht.NewRemoteNode(*helperAddr, "", node.Transport)
+		helperNode = dht.NewRemoteNode(*helperAddr, "", node.Transport, nil)
 	}
 	time.Sleep(2 * time.Second)
 	node.Join(helperNode)

@@ -47,11 +47,35 @@ func TestIncID(t *testing.T) {
 	}
 	var want string
 	var res string
+	idChars := 40
 	for _, s := range tests {
-		want = strings.Repeat("0", IDChars-len(s.want)) + s.want
-		res = incID(s.in)
+		want = strings.Repeat("0", idChars-len(s.want)) + s.want
+		res = incID(s.in, idChars)
 		if res != want {
 			t.Errorf("incID(%s) = %s, wanted %s", s.in, res, want)
+		}
+	}
+}
+
+func TestGetFEStart(t *testing.T) {
+	var res string
+	var tests = []struct {
+		n                    string
+		idx, idBits, idChars int
+		want                 string
+	}{
+		{"001", 0, 5, 3, "002"}, // FT1[0] = succ(2)
+		{"001", 1, 5, 3, "003"}, // FT1[1] = succ(3)
+		{"001", 3, 5, 3, "009"},
+		{"00a", 0, 5, 3, "00b"},
+		{"00a", 3, 5, 3, "012"}, // FTa[3] = succ(18)
+		{"00a", 4, 5, 3, "01a"},
+	}
+	for _, s := range tests {
+		res = getFEStart(s.n, s.idx, s.idBits, s.idChars)
+		if res != s.want {
+			t.Errorf("getFEStart(%s, %d, %d, %d) = %s, wanted %s",
+				s.n, s.idx, s.idBits, s.idChars, res, s.want)
 		}
 	}
 }

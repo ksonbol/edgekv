@@ -11,20 +11,20 @@ type fingerEntry struct {
 }
 
 func initFT(node *Node) []fingerEntry {
-	ft := make([]fingerEntry, IDBits)
+	ft := make([]fingerEntry, node.conf.IDBits)
 	for i := range ft {
-		ft[i] = fingerEntry{start: getFEStart(node.ID, i)}
+		ft[i] = fingerEntry{start: getFEStart(node.ID, i, node.conf.IDBits, node.conf.IDChars)}
 	}
 	return ft
 }
 
-func getFEStart(n string, idx int) string {
+func getFEStart(n string, idx int, idBits int, idChars int) string {
 	startInt, _ := new(big.Int).SetString(n, 16)            // n
 	twoToI := big.NewInt(int64(math.Exp2(float64(idx))))    // 2^i
 	startInt.Add(startInt, twoToI)                          // (n + 2^i)
-	twoToM := big.NewInt(int64(math.Exp2(float64(IDBits)))) // 2^m
+	twoToM := big.NewInt(int64(math.Exp2(float64(idBits)))) // 2^m
 	startInt.Mod(startInt, twoToM)                          // (n + 2^i) mod 2^m
-	return appendZeros(startInt.Text(16), IDChars)
+	return appendZeros(startInt.Text(16), idChars)
 }
 
 // fillFT fills all entries of FT except for first one
@@ -70,10 +70,10 @@ func inInterval(key string, start string, end string) bool {
 	return false
 }
 
-func incID(id string) string {
+func incID(id string, idChars int) string {
 	idInt, _ := new(big.Int).SetString(id, 16)
 	idInt.Add(idInt, big.NewInt(1))
-	return appendZeros(idInt.Text(16), IDChars)
+	return appendZeros(idInt.Text(16), idChars)
 }
 
 func appendZeros(s string, length int) string {

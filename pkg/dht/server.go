@@ -103,16 +103,17 @@ func (s *Server) ClosestPrecedingFinger(ctx context.Context, req *pb.ID) (*pb.No
 
 // Notify this node of a possible predecessor change
 func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error) {
+	idChars := s.node.conf.IDChars
 	pred := s.node.Predecessor()
 	// if pred == s.node {
 	// 	defer close(s.node.nodeJoinCh) // other nodes have joined the system
 	// }
 	// if pred is nil or n` in (pred, n)
 	if pred.ID != req.GetId() { // for readability and to avoid uneeded calculations
-		if (pred == s.node) || inInterval(req.GetId(), incID(pred.ID), s.node.ID) {
-			new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.Transport)
-			// log.Printf("Replacing node %s old predecessor (%s) with %s\n",
-			// s.node.ID, pred.ID, new.ID)
+		if (pred == s.node) || inInterval(req.GetId(), incID(pred.ID, idChars), s.node.ID) {
+			new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.Transport, nil)
+			log.Printf("Replacing node %s old predecessor (%s) with %s\n",
+				s.node.ID, pred.ID, new.ID)
 			s.node.SetPredecessor(new)
 		}
 	}

@@ -6,18 +6,30 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ksonbol/edgekv/utils"
 )
 
-// IDBits is the number of bits contained in ID hashes
-const IDBits = 160 // sha1
+type idGenerator func(s string) string
 
-// IDChars is the number of characters contained in ID hashes in hex encoding
-const IDChars int = IDBits / 4
+// // IDBits is the number of bits contained in ID hashes
+// const IDBits = 160 // sha1
+
+// // IDChars is the number of characters contained in ID hashes in hex encoding
+// const IDChars int = IDBits / 4
+
+// Config specifies configurations for a dht node
+type Config struct {
+	IDBits  int
+	IDChars int
+	idFunc  idGenerator
+}
+
+var defaultConfig *Config = &Config{IDBits: 160, IDChars: 40, idFunc: genID}
+
+// var defaultConfig *Config = &Config{IDBits: 5, IDChars: 3, idFunc: shortID}
 
 // Node represents a node in the DHT overlay
 type Node struct {
@@ -32,6 +44,7 @@ type Node struct {
 	predMut    sync.RWMutex
 	succMut    sync.RWMutex
 	closeOnce  sync.Once
+	conf       *Config
 }
 
 // newBasicNode creates a node with the essential parameters
@@ -40,8 +53,12 @@ func newBasicNode(addr string, id string) *Node {
 }
 
 // NewLocalNode creates a new DHT node, initializing ID and transport
-func NewLocalNode(addr string) *Node {
-	n := newBasicNode(addr, genID(addr))
+func NewLocalNode(addr string, conf *Config) *Node {
+	if conf == nil {
+		conf = defaultConfig
+	}
+	n := newBasicNode(addr, conf.idFunc(addr))
+	n.conf = conf
 	n.ft = initFT(n)
 	fillFTFirstNode(n)
 	n.SetPredecessor(n)
@@ -54,11 +71,15 @@ func NewLocalNode(addr string) *Node {
 }
 
 // NewRemoteNode returns a Node instance without the FT
-func NewRemoteNode(addr string, id string, localTransport *transport) *Node {
+func NewRemoteNode(addr string, id string, localTransport *transport, conf *Config) *Node {
 	if id == "" {
-		id = genID(addr)
+		id = conf.idFunc(addr)
+	}
+	if conf == nil {
+		conf = defaultConfig
 	}
 	n := newBasicNode(addr, id)
+	n.conf = conf
 	n.Transport = newTransport(n, localTransport.remotes, localTransport.mux)
 	return n
 }
@@ -74,10 +95,7 @@ func (n *Node) Join(helperNode *Node) error {
 		if err != nil {
 			return err
 		}
-		v1, _ := strconv.ParseInt(n.ID, 16, 32)
-		v2, _ := strconv.ParseInt(succ.ID, 16, 32)
-		log.Printf("Setting node %d successor 1st time: %d\n", v1,
-			v2)
+		log.Printf("Setting node %s successor 1st time: %s\n", n.ID, succ.ID)
 
 		n.SetSuccessor(succ)
 	}
@@ -162,9 +180,9 @@ func (n *Node) stabilize() {
 			}
 			if newSucc.ID != succ.ID {
 				// if n == successor OR newSucc in (n, successor)
-				if (n == succ) || (inInterval(newSucc.ID, incID(n.ID), succ.ID)) {
-					// log.Printf("Replacing node %s old successor (%s) with %s\n",
-					// 	n.ID, succ.ID, newSucc.ID)
+				if (n == succ) || (inInterval(newSucc.ID, incID(n.ID, n.conf.IDChars), succ.ID)) {
+					log.Printf("Replacing node %s old successor (%s) with %s\n",
+						n.ID, succ.ID, newSucc.ID)
 					n.SetSuccessor(newSucc)
 				}
 			}
@@ -191,7 +209,7 @@ func (n *Node) fixFingers() {
 			if n == n.Successor() {
 				continue // wait until the successor link is updated
 			}
-			i := rand.Intn(IDBits)
+			i := rand.Intn(n.conf.IDBits-1) + 1 // i in (1,IDBits)
 			succ, err := n.findSuccessor(n.ft[i].start)
 			if err != nil {
 				log.Fatalf("Failed to get successor while running fixFingers %v", err)
@@ -231,18 +249,23 @@ func (n *Node) findPredecessor(ID string) (*Node, error) {
 	err := *new(error)
 	succ := next.Successor() // current node, no need for RPC yet
 	// while id not in (next.ID, next.Successor.ID]
-	for !inInterval(ID, incID(next.ID), incID(succ.ID)) {
+	for !inInterval(ID, incID(next.ID, n.conf.IDChars), incID(succ.ID, n.conf.IDChars)) {
 		if next == n {
 			next = next.closestPrecedingFinger(ID)
 		} else {
 			next, err = next.ClosestPrecedingFingerRPC(ID)
+			if err != nil {
+				return nil, err
+			}
 		}
-		if err != nil {
-			return nil, err
-		}
-		succ, err = next.GetSuccessorRPC()
-		if err != nil {
-			return nil, err
+		// get next's successor for next iteration
+		if n.ID == next.ID {
+			succ = next.Successor()
+		} else {
+			succ, err = next.GetSuccessorRPC()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return next, nil
@@ -254,11 +277,16 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 		if fingerNode == nil {
 			fmt.Printf("FT[%d] with start=%s is not set\n", i, n.ft[i].start)
 		}
-		if inInterval(fingerNode.ID, incID(n.ID), ID) {
+		if inInterval(fingerNode.ID, incID(n.ID, n.conf.IDChars), ID) {
 			return fingerNode
 		}
 	}
 	return n
+}
+
+// GetFTID returns the ID with ft entry with index idx
+func (n *Node) GetFTID(idx int) string {
+	return n.ft[idx].node.ID
 }
 
 // Leave the DHT ring and stop the node
@@ -295,12 +323,3 @@ func genID(s string) string {
 	hash := hex.EncodeToString(h.Sum(nil))
 	return hash
 }
-
-// func genID(s string) string {
-// 	m := map[string]string{"localhost:5554": "01", "localhost:5555": "05",
-// 		"localhost:5556": "0a", "localhost:5557": "0f"}
-// 	return m[s]
-// }
-
-// const IDChars int = 2
-// const IDBits = 5
