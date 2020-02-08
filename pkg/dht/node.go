@@ -45,20 +45,27 @@ type Node struct {
 	succMut    sync.RWMutex
 	closeOnce  sync.Once
 	conf       *Config
+	storage    Storage
 }
 
 // newBasicNode creates a node with the essential parameters
-func newBasicNode(addr string, id string) *Node {
-	return &Node{Addr: addr, ID: id, shutdownCh: make(chan struct{}), nodeJoinCh: make(chan struct{})}
+func newBasicNode(addr string, id string, conf *Config) *Node {
+	return &Node{
+		Addr:       addr,
+		ID:         id,
+		conf:       conf,
+		shutdownCh: make(chan struct{}),
+		nodeJoinCh: make(chan struct{}),
+	}
 }
 
 // NewLocalNode creates a new DHT node, initializing ID and transport
-func NewLocalNode(addr string, conf *Config) *Node {
+func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 	if conf == nil {
 		conf = defaultConfig
 	}
-	n := newBasicNode(addr, conf.idFunc(addr))
-	n.conf = conf
+	n := newBasicNode(addr, conf.idFunc(addr), conf)
+	n.storage = st
 	n.ft = initFT(n)
 	fillFTFirstNode(n)
 	n.SetPredecessor(n)
@@ -78,7 +85,7 @@ func NewRemoteNode(addr string, id string, localTransport *transport, conf *Conf
 	if conf == nil {
 		conf = defaultConfig
 	}
-	n := newBasicNode(addr, id)
+	n := newBasicNode(addr, id, conf)
 	n.conf = conf
 	n.Transport = newTransport(n, localTransport.remotes, localTransport.mux)
 	return n
@@ -128,6 +135,59 @@ func (n *Node) ClosestPrecedingFingerRPC(id string) (*Node, error) {
 // NotifyRPC notify node that n should be their predecessor
 func (n *Node) NotifyRPC(node *Node) error {
 	return n.Transport.notify(node)
+}
+
+func (n *Node) GetKVRPC(key string) (string, error) {
+	return n.Transport.getKV(key)
+}
+
+func (n *Node) PutKVRPC(key, value string) error {
+	return n.Transport.putKV(key, value)
+}
+
+func (n *Node) DelKVRPC(key string) error {
+	return n.Transport.delKV(key)
+}
+
+func (n *Node) GetKV(key string) (string, error) {
+	if n.canStore(key) {
+		if val, err := n.storage.GetKV(key); err != nil {
+			return "", err
+		} else {
+			return val, nil
+		}
+	} else {
+		if succ, err := n.findSuccessor(key); err != nil {
+			return "", err
+		} else {
+			return succ.GetKVRPC(key)
+		}
+
+	}
+}
+
+func (n *Node) PutKV(key, value string) error {
+	if n.canStore(key) {
+		return n.storage.PutKV(key, value)
+	} else {
+		if succ, err := n.findSuccessor(key); err != nil {
+			return err
+		} else {
+			return succ.PutKVRPC(key, value)
+		}
+	}
+}
+
+func (n *Node) DelKV(key string) error {
+	if n.canStore(key) {
+		return n.storage.DelKV(key)
+	} else {
+		if succ, err := n.findSuccessor(key); err != nil {
+			return err
+		} else {
+			return succ.DelKVRPC(key)
+		}
+	}
 }
 
 // Successor returns the successor of node n
@@ -315,6 +375,11 @@ func (n *Node) PrintFT() {
 	for i, ent := range n.ft {
 		fmt.Printf("%d %s %s\n", i, ent.start, ent.node.ID)
 	}
+}
+
+func (n *Node) canStore(key string) bool {
+	// keys is in (pred, n]
+	return inInterval(key, incID(n.Predecessor().ID, n.conf.IDChars), incID(n.ID, n.conf.IDChars))
 }
 
 func genID(s string) string {

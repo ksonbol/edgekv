@@ -123,6 +123,24 @@ func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error)
 	return &pb.EmptyRes{}, nil
 }
 
+// GetKV returns the value associated with a key from the edge group
+func (s *Server) GetKV(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+	val, err := s.node.GetKV(req.GetKey())
+	return &pb.GetResponse{Value: val, Size: int32(len(val))}, err
+}
+
+// PutKV adds or updates key-value pair in the edge group
+func (s *Server) PutKV(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
+	err := s.node.PutKV(req.GetKey(), req.GetValue())
+	return &pb.PutResponse{}, err
+}
+
+// DelKV removes the key-value pair from the edge group
+func (s *Server) DelKV(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	err := s.node.DelKV(req.GetKey())
+	return &pb.DeleteResponse{}, err
+}
+
 func (s *Server) stop() {
 	s.grpcServer.GracefulStop() // wait for pending RPCs to finish, then stop
 }

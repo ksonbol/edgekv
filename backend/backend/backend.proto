@@ -60,7 +60,7 @@ message PutRequest {
 }
 
 message PutResponse {
-    int32 status = 1;
+    // int32 status = 1;
 }
 
 message DeleteRequest {

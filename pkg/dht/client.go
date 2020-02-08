@@ -122,7 +122,7 @@ func (c *Client) PutKV(key string, value string) error {
 }
 
 // DelKV removes the key-value pair from kv store
-func (c *Client) DelKV(key string, dataType string) error {
+func (c *Client) DelKV(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
 	req := &pb.DeleteRequest{Key: key}

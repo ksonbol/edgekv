@@ -16,10 +16,10 @@ func shortID(s string) string {
 func TestFingerTables(t *testing.T) {
 	conf := &Config{IDBits: 5, IDChars: 3, idFunc: shortID}
 	nodeAddr := map[int]string{1: "localhost:5554", 2: "localhost:5555", 3: "localhost:5556", 4: "localhost:5557"}
-	node := NewLocalNode(nodeAddr[1], conf)
-	node2 := NewLocalNode(nodeAddr[2], conf)
-	node3 := NewLocalNode(nodeAddr[3], conf)
-	node4 := NewLocalNode(nodeAddr[4], conf)
+	node := NewLocalNode(nodeAddr[1], nil, conf)
+	node2 := NewLocalNode(nodeAddr[2], nil, conf)
+	node3 := NewLocalNode(nodeAddr[3], nil, conf)
+	node4 := NewLocalNode(nodeAddr[4], nil, conf)
 	m := map[int]*Node{1: node, 2: node2, 3: node3, 4: node4}
 	helperNode2 := NewRemoteNode(node.Addr, node.ID, node2.Transport, conf)
 	helperNode3 := NewRemoteNode(node.Addr, node.ID, node3.Transport, conf)

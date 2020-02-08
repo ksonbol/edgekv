@@ -107,3 +107,21 @@ func (t *transport) shutdown() {
 	t.remotes = nil
 	t.mux.Unlock()
 }
+
+func (t *transport) getKV(key string) (string, error) {
+	cli := t.getRemote()
+	res, err := cli.GetKV(key)
+	return res, err
+}
+
+func (t *transport) putKV(key, value string) error {
+	cli := t.getRemote()
+	err := cli.PutKV(key, value)
+	return err
+}
+
+func (t *transport) delKV(key string) error {
+	cli := t.getRemote()
+	err := cli.DelKV(key)
+	return err
+}

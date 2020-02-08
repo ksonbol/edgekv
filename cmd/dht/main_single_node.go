@@ -16,7 +16,7 @@ var (
 func run() {
 	flag.Parse()
 	fmt.Println("Starting  the program")
-	node := dht.NewLocalNode(*nodeAddress, nil)
+	node := dht.NewLocalNode(*nodeAddress, nil, nil)
 	fmt.Println("Created local nodes")
 	var helperNode *dht.Node
 	if *helperAddr != "" {
