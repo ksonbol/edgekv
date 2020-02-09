@@ -6,25 +6,26 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 
 	pb "github.com/ksonbol/edgekv/frontend/frontend"
-
 	"github.com/ksonbol/edgekv/internal/etcdclient"
+	"github.com/ksonbol/edgekv/pkg/dht"
+
 	"github.com/ksonbol/edgekv/utils"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
 func checkError(err error) error {
-	var returnErr error
 	if err == nil {
 		return err
 	}
+	var returnErr error
 	if err == context.Canceled {
 		returnErr = status.Errorf(codes.Canceled,
 			"Error sending request to etcd: ctx is canceled by another routine: %v", err)
@@ -52,27 +53,71 @@ func checkError(err error) error {
 // FrontendServer used to manage edge nodes
 type FrontendServer struct {
 	pb.UnimplementedFrontendServer
-	mu         sync.Mutex
-	etcdClient *clientv3.Client
-	hostname   string
-	port       int
+	mu       sync.Mutex
+	localSt  *clientv3.Client
+	globalSt *clientv3.Client
+	gateway  *dht.Node
+	hostname string
+	port     int
+}
+
+// NewEdgeServer return a new edge server
+func NewEdgeServer(hostname string, port int) *FrontendServer {
+	s := &FrontendServer{
+		localSt:  etcdclient.NewClient(true),
+		globalSt: etcdclient.NewClient(false),
+		hostname: hostname,
+		port:     port,
+	}
+	return s
+}
+
+// SetGateway sets the connection to the gateway node
+func (s *FrontendServer) SetGateway(addr string) {
+	s.gateway = dht.NewRemoteNode(addr, "", nil, nil)
 }
 
 // Get returns the Value at the specified key and data type
 func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	var val string
-	// var exists bool
+	var err error
 	var returnErr error = nil
 	var returnRes *pb.GetResponse
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// TODO: local vs global data
-	res, err := s.etcdClient.Get(ctx, req.GetKey())
-	cancel()
+	var res *clientv3.GetResponse
+	var val string
+	sender, ok := peer.FromContext(ctx)
+	if !ok {
+		log.Fatal("Couldn't get requester info to the edge node")
+	}
+	senderAddr := sender.Addr.String()
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	key := req.GetKey()
+	switch req.GetType() {
+	case utils.LocalData:
+		res, err = s.localSt.Get(ctx, key)
+	case utils.GlobalData:
+		if s.gateway == nil {
+			log.Fatal("Get request failed: gateway node not initialized at the edge")
+		}
+		// if request is coming from the gateway node, we don't ask it again if key
+		// is our responsiblity
+		if senderAddr == s.gateway.Addr {
+			res, err = s.globalSt.Get(ctx, key)
+		} else {
+			ans, er := s.gateway.CanStoreRPC(key)
+			if er != nil {
+				log.Fatalf("Get request failed: communication with gateway node failed")
+			}
+			if ans {
+				res, err = s.globalSt.Get(ctx, key)
+			} else {
+				val, err = s.gateway.GetKVRPC(key)
+			}
+		}
+	}
+	// cancel()
 	returnErr = checkError(err)
-	if returnErr == nil {
+	if (res != nil) && (returnErr == nil) {
 		// TODO: what if Kvs returns more than one kv-pair, is that possible?
-		// TODO: how to choose which KV store to choose from? can we do that?
 		if len(res.Kvs) > 0 {
 			kv := res.Kvs[0]
 			val = string(kv.Value)
@@ -81,6 +126,11 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 		} else {
 			returnErr = status.Errorf(codes.NotFound, "Key Not Found: %s", req.GetKey())
 		}
+	} else {
+		if returnErr == nil {
+			// we already have the value from a remote group
+			returnRes = &pb.GetResponse{Value: val, Size: int32(len(val))}
+		}
 	}
 	return returnRes, returnErr
 }
@@ -88,12 +138,38 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 // Put stores the Value at the specified key and data type
 func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
 	var returnErr error = nil
+	var err error
 	var returnRes *pb.PutResponse
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// TODO: local vs global data
-	_, err := s.etcdClient.Put(ctx, req.GetKey(), req.GetValue())
-	cancel()
+	sender, ok := peer.FromContext(ctx)
+	if !ok {
+		log.Fatal("Couldn't get requester info to the edge node")
+	}
+	senderAddr := sender.Addr.String()
+	key := req.GetKey()
+	// var res *clientv3.PutResponse
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	switch req.GetType() {
+	case utils.LocalData:
+		_, err = s.localSt.Put(ctx, key, req.GetValue())
+	case utils.GlobalData:
+		if s.gateway == nil {
+			log.Fatal("Put request failed: gateway node not initialized at the edge")
+		}
+		if senderAddr == s.gateway.Addr {
+			_, err = s.globalSt.Put(ctx, key, req.GetValue())
+		} else {
+			ans, er := s.gateway.CanStoreRPC(key)
+			if er != nil {
+				log.Fatalf("Put request failed: communication with gateway node failed")
+			}
+			if ans {
+				_, err = s.globalSt.Put(ctx, key, req.GetValue())
+			} else {
+				err = s.gateway.PutKVRPC(key, req.GetValue())
+			}
+		}
+	}
+	// cancel()
 	returnErr = checkError(err)
 	if returnErr == nil {
 		returnRes = &pb.PutResponse{Status: utils.KVAddedOrUpdated}
@@ -104,21 +180,50 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 // Del deletes the key-value pair
 func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	var returnErr error = nil
+	var err error
 	var returnRes *pb.DeleteResponse
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// TODO: local vs global data
-	delRes, err := s.etcdClient.Delete(ctx, req.GetKey())
-	cancel() // as given in etcd docs, wouldnt do harm anyway
+	// var res *clientv3.DeleteResponse
+	sender, ok := peer.FromContext(ctx)
+	if !ok {
+		log.Fatal("Couldn't get requester info to the edge node")
+	}
+	senderAddr := sender.Addr.String()
+	key := req.GetKey()
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	switch req.GetType() {
+	case utils.LocalData:
+		_, err = s.localSt.Delete(ctx, key)
+	case utils.GlobalData:
+		if senderAddr == s.gateway.Addr {
+			_, err = s.globalSt.Delete(ctx, key)
+		} else {
+			ans, er := s.gateway.CanStoreRPC(key)
+			if er != nil {
+				log.Fatalf("Delete request failed: communication with gateway node failed")
+			}
+			if ans {
+				_, err = s.globalSt.Delete(ctx, key)
+			} else {
+				err = s.gateway.DelKVRPC(key)
+			}
+		}
+	}
+	// cancel() // as given in etcd docs, wouldnt do harm anyway
 	returnErr = checkError(err)
 	if returnErr == nil {
-		if delRes.Deleted < 1 {
-			returnRes = &pb.DeleteResponse{Status: utils.KeyNotFound}
-		} else {
-			returnRes = &pb.DeleteResponse{Status: utils.KVDeleted}
-		}
-	} else {
-		returnRes = &pb.DeleteResponse{Status: utils.UnknownError}
+		returnRes = &pb.DeleteResponse{Status: utils.KVDeleted}
 	}
+	// TODO: we can check these keys to decide if the key was not found or actually deleted
+	// but not really important for now
+	// Todo: find out this: can the key be not deleted and returnErr still be nil?
+	// 	if res.Deleted < 1 {
+	// 		returnRes = &pb.DeleteResponse{Status: utils.KeyNotFound}
+	// 	} else {
+	// 		returnRes = &pb.DeleteResponse{Status: utils.KVDeleted}
+	// 	}
+	// } else {
+	// 	returnRes = &pb.DeleteResponse{Status: utils.UnknownError}
+	// }
 	return returnRes, returnErr
 }
 
@@ -156,14 +261,10 @@ func (s *FrontendServer) RunInsecure() error {
 
 // Close the edge server and free its resources
 func (s *FrontendServer) Close() error {
-	return s.etcdClient.Close()
-}
-
-// NewEdgeServer return a new edge server
-func NewEdgeServer(hostname string, port int) *FrontendServer {
-	s := &FrontendServer{
-		etcdClient: etcdclient.NewEtcdClient(),
-		hostname:   hostname,
-		port:       port}
-	return s
+	err1 := s.localSt.Close()
+	err2 := s.globalSt.Close()
+	if (err1 != nil) || (err2 != nil) {
+		return fmt.Errorf("failed to close etcd client %v, %v", err1, err2)
+	}
+	return nil
 }

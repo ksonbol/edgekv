@@ -12,19 +12,28 @@ import (
 )
 
 // getEndpoints return a slice of endpoint info as hostname:port
-func getEndpoints() []string {
+func getEndpoints(isLocal bool) []string {
 	var endpoints []string
-	endpointsStr, exists := os.LookupEnv("ENDPOINTS")
+	var endpointsStr string
+	var exists bool
+	localEnvVar := "LOCAL_ENDPOINTS"
+	globalEnvVar := "GLOBAL_ENDPOINTS"
+	if isLocal {
+		endpointsStr, exists = os.LookupEnv(localEnvVar)
+	} else {
+		endpointsStr, exists = os.LookupEnv(globalEnvVar)
+
+	}
 	if !exists {
-		log.Fatalf("ENDPOINTS environment variable not set!")
+		log.Fatalf("%s and %s environment variables not set correctly!", localEnvVar, globalEnvVar)
 	}
 	endpoints = strings.Split(endpointsStr, ",")
 	return endpoints
 }
 
-// NewEtcdClient returns a new reusable etcd client
-func NewEtcdClient() *clientv3.Client {
-	endpoints := getEndpoints()
+// NewClient returns a new reusable etcd client
+func NewClient(isLocal bool) *clientv3.Client {
+	endpoints := getEndpoints(isLocal)
 	cli, err := clientv3.New(clientv3.Config{
 		// Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
 		Endpoints:   endpoints,

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+
 	"github.com/ksonbol/edgekv/pkg/client"
 	"github.com/ksonbol/edgekv/utils"
 )
@@ -22,9 +23,17 @@ func main() {
 		fmt.Printf("Error while creating edgekv client %v\n", err)
 	}
 	key := "key"
+	fmt.Println("Testing Local data access")
 	fmt.Println(cl.Get(key, utils.LocalDataStr))
 	fmt.Println(cl.Put(key, utils.LocalDataStr, "val"))
 	fmt.Println(cl.Get(key, utils.LocalDataStr))
 	fmt.Println(cl.Del(key, utils.LocalDataStr))
 	fmt.Println(cl.Get(key, utils.LocalDataStr))
+	fmt.Println("Testing Global data access")
+	fmt.Println(cl.Get(key, utils.GlobalDataStr))
+	fmt.Println(cl.Put(key, utils.GlobalDataStr, "val2"))
+	fmt.Println(cl.Get(key, utils.GlobalDataStr))
+	fmt.Println(cl.Get(key, utils.LocalDataStr))
+	fmt.Println(cl.Del(key, utils.GlobalDataStr))
+	fmt.Println(cl.Get(key, utils.GlobalDataStr))
 }

@@ -79,6 +79,9 @@ func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 
 // NewRemoteNode returns a Node instance without the FT
 func NewRemoteNode(addr string, id string, localTransport *transport, conf *Config) *Node {
+	if conf == nil {
+		conf = defaultConfig
+	}
 	if id == "" {
 		id = conf.idFunc(addr)
 	}
@@ -87,7 +90,13 @@ func NewRemoteNode(addr string, id string, localTransport *transport, conf *Conf
 	}
 	n := newBasicNode(addr, id, conf)
 	n.conf = conf
-	n.Transport = newTransport(n, localTransport.remotes, localTransport.mux)
+	if localTransport == nil {
+		// this is useful if we want to connect to a single node only
+		n.Transport = newTransport(n, nil, nil)
+	} else {
+		// this is useful if we will connect to multiple nodes
+		n.Transport = newTransport(n, localTransport.remotes, localTransport.mux)
+	}
 	return n
 }
 
@@ -137,57 +146,67 @@ func (n *Node) NotifyRPC(node *Node) error {
 	return n.Transport.notify(node)
 }
 
+// GetKVRPC gets the KV using the node stub
 func (n *Node) GetKVRPC(key string) (string, error) {
 	return n.Transport.getKV(key)
 }
 
+// PutKVRPC puts the KV using the node stub
 func (n *Node) PutKVRPC(key, value string) error {
 	return n.Transport.putKV(key, value)
 }
 
+// DelKVRPC deletes the KV using the node stub
 func (n *Node) DelKVRPC(key string) error {
 	return n.Transport.delKV(key)
 }
 
+// CanStoreRPC returns CanStore on the remote node
+func (n *Node) CanStoreRPC(key string) (bool, error) {
+	return n.Transport.canStore(key)
+}
+
+// GetKV gets the KV from the connected edge group or from a remote group
 func (n *Node) GetKV(key string) (string, error) {
-	if n.canStore(key) {
-		if val, err := n.storage.GetKV(key); err != nil {
+	var err error
+	if n.CanStore(key) {
+		var val string
+		if val, err = n.storage.GetKV(key); err != nil {
 			return "", err
-		} else {
-			return val, nil
 		}
-	} else {
-		if succ, err := n.findSuccessor(key); err != nil {
-			return "", err
-		} else {
-			return succ.GetKVRPC(key)
-		}
-
+		return val, nil
 	}
+	var succ *Node
+	if succ, err = n.findSuccessor(key); err != nil {
+		return "", err
+	}
+	return succ.GetKVRPC(key)
 }
 
+// PutKV puts the KV to the connected edge group or to a remote group
 func (n *Node) PutKV(key, value string) error {
-	if n.canStore(key) {
+	var succ *Node
+	var err error
+	if n.CanStore(key) {
 		return n.storage.PutKV(key, value)
-	} else {
-		if succ, err := n.findSuccessor(key); err != nil {
-			return err
-		} else {
-			return succ.PutKVRPC(key, value)
-		}
 	}
+	if succ, err = n.findSuccessor(key); err != nil {
+		return err
+	}
+	return succ.PutKVRPC(key, value)
 }
 
+// DelKV removes the KV from the connected edge group or from a remote group
 func (n *Node) DelKV(key string) error {
-	if n.canStore(key) {
+	var succ *Node
+	var err error
+	if n.CanStore(key) {
 		return n.storage.DelKV(key)
-	} else {
-		if succ, err := n.findSuccessor(key); err != nil {
-			return err
-		} else {
-			return succ.DelKVRPC(key)
-		}
 	}
+	if succ, err = n.findSuccessor(key); err != nil {
+		return err
+	}
+	return succ.DelKVRPC(key)
 }
 
 // Successor returns the successor of node n
@@ -344,6 +363,12 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 	return n
 }
 
+// CanStore returns true if the key is the responisibility of this node and false otherwise
+func (n *Node) CanStore(key string) bool {
+	// keys is in (pred, n]
+	return inInterval(key, incID(n.Predecessor().ID, n.conf.IDChars), incID(n.ID, n.conf.IDChars))
+}
+
 // GetFTID returns the ID with ft entry with index idx
 func (n *Node) GetFTID(idx int) string {
 	return n.ft[idx].node.ID
@@ -375,11 +400,6 @@ func (n *Node) PrintFT() {
 	for i, ent := range n.ft {
 		fmt.Printf("%d %s %s\n", i, ent.start, ent.node.ID)
 	}
-}
-
-func (n *Node) canStore(key string) bool {
-	// keys is in (pred, n]
-	return inInterval(key, incID(n.Predecessor().ID, n.conf.IDChars), incID(n.ID, n.conf.IDChars))
 }
 
 func genID(s string) string {

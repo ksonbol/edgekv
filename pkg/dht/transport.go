@@ -125,3 +125,9 @@ func (t *transport) delKV(key string) error {
 	err := cli.DelKV(key)
 	return err
 }
+
+func (t *transport) canStore(key string) (bool, error) {
+	cli := t.getRemote()
+	ans, err := cli.CanStore(key)
+	return ans, err
+}

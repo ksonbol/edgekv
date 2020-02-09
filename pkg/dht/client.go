@@ -139,3 +139,13 @@ func (c *Client) DelKV(key string) error {
 	}
 	return returnErr
 }
+
+// CanStore asks the remote node if key is its responsibility
+func (c *Client) CanStore(key string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.CanStoreRequest{Key: key}
+	res, err := c.rpcClient.CanStore(ctx, req)
+	return res.GetAnswer(), err
+
+}

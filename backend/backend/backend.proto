@@ -29,6 +29,8 @@ service Backend {
     rpc PutKV(PutRequest) returns (PutResponse) {}
     // delete key-value pair from remote edgekv group
     rpc DelKV(DeleteRequest) returns (DeleteResponse) {}
+    // check if the node is responsible for a key or not
+    rpc CanStore(CanStoreRequest) returns (CanStoreResponse) {}
 }
 
 // DHT messages
@@ -69,4 +71,12 @@ message DeleteRequest {
 
 message DeleteResponse {
     int32 status = 1;
+}
+
+message CanStoreRequest {
+    string key = 1;
+}
+
+message CanStoreResponse {
+    bool answer = 1;
 }

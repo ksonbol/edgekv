@@ -141,6 +141,12 @@ func (s *Server) DelKV(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteRe
 	return &pb.DeleteResponse{}, err
 }
 
+// CanStore returns true if the node can store the key and false otherwise
+func (s *Server) CanStore(ctx context.Context, req *pb.CanStoreRequest) (*pb.CanStoreResponse, error) {
+	ans := s.node.CanStore(req.GetKey())
+	return &pb.CanStoreResponse{Answer: ans}, nil
+}
+
 func (s *Server) stop() {
 	s.grpcServer.GracefulStop() // wait for pending RPCs to finish, then stop
 }
