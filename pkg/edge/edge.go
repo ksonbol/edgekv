@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	pb "github.com/ksonbol/edgekv/frontend/frontend"
 	"github.com/ksonbol/edgekv/internal/etcdclient"
@@ -93,24 +94,25 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 	key := req.GetKey()
 	switch req.GetType() {
 	case utils.LocalData:
-		res, err = s.localSt.Get(ctx, key)
+		res, err = s.localSt.Get(ctx, key) // get the key itself, no hashes used
 	case utils.GlobalData:
 		if s.gateway == nil {
 			log.Fatal("Get request failed: gateway node not initialized at the edge")
 		}
+		hashedKey := s.gateway.Conf.IDFunc(key)
 		// if request is coming from the gateway node, we don't ask it again if key
 		// is our responsiblity
 		if senderAddr == s.gateway.Addr {
-			res, err = s.globalSt.Get(ctx, key)
+			res, err = s.globalSt.Get(ctx, hashedKey)
 		} else {
-			ans, er := s.gateway.CanStoreRPC(key)
+			ans, er := s.gateway.CanStoreRPC(hashedKey)
 			if er != nil {
 				log.Fatalf("Get request failed: communication with gateway node failed")
 			}
 			if ans {
-				res, err = s.globalSt.Get(ctx, key)
+				res, err = s.globalSt.Get(ctx, hashedKey)
 			} else {
-				val, err = s.gateway.GetKVRPC(key)
+				val, err = s.gateway.GetKVRPC(hashedKey)
 			}
 		}
 	}
@@ -155,17 +157,18 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 		if s.gateway == nil {
 			log.Fatal("Put request failed: gateway node not initialized at the edge")
 		}
+		hashedKey := s.gateway.Conf.IDFunc(key)
 		if senderAddr == s.gateway.Addr {
-			_, err = s.globalSt.Put(ctx, key, req.GetValue())
+			_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
 		} else {
-			ans, er := s.gateway.CanStoreRPC(key)
+			ans, er := s.gateway.CanStoreRPC(hashedKey)
 			if er != nil {
 				log.Fatalf("Put request failed: communication with gateway node failed")
 			}
 			if ans {
-				_, err = s.globalSt.Put(ctx, key, req.GetValue())
+				_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
 			} else {
-				err = s.gateway.PutKVRPC(key, req.GetValue())
+				err = s.gateway.PutKVRPC(hashedKey, req.GetValue())
 			}
 		}
 	}
@@ -194,17 +197,21 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	case utils.LocalData:
 		_, err = s.localSt.Delete(ctx, key)
 	case utils.GlobalData:
+		if s.gateway == nil {
+			log.Fatal("Delete request failed: gateway node not initialized at the edge")
+		}
+		hashedKey := s.gateway.Conf.IDFunc(key)
 		if senderAddr == s.gateway.Addr {
-			_, err = s.globalSt.Delete(ctx, key)
+			_, err = s.globalSt.Delete(ctx, hashedKey)
 		} else {
-			ans, er := s.gateway.CanStoreRPC(key)
+			ans, er := s.gateway.CanStoreRPC(hashedKey)
 			if er != nil {
 				log.Fatalf("Delete request failed: communication with gateway node failed")
 			}
 			if ans {
-				_, err = s.globalSt.Delete(ctx, key)
+				_, err = s.globalSt.Delete(ctx, hashedKey)
 			} else {
-				err = s.gateway.DelKVRPC(key)
+				err = s.gateway.DelKVRPC(hashedKey)
 			}
 		}
 	}
@@ -225,6 +232,76 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	// 	returnRes = &pb.DeleteResponse{Status: utils.UnknownError}
 	// }
 	return returnRes, returnErr
+}
+
+// RangeGet returns the KV-pairs in the specified range [Start, end) and specified storage
+// For Global storage, given key range is searched in the current group only
+// and the given keys should be the hashed keys
+// For local storage, no hashing is used anyway
+func (s *FrontendServer) RangeGet(req *pb.RangeGetRequest, stream pb.Frontend_RangeGetServer) error {
+	var err error
+	var returnErr error = nil
+	var res, res2, res3 *clientv3.GetResponse
+	var kvRes *pb.KV
+	var more bool
+	startKey := req.GetStart()
+	endKey := req.GetEnd()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	switch req.GetType() {
+	case utils.LocalData:
+		if startKey > endKey {
+			return fmt.Errorf("Range Get over local data failed: start > end")
+		}
+		res, err = s.localSt.Get(ctx, startKey, clientv3.WithRange(endKey)) // get the key itself, no hashes used
+	case utils.GlobalData:
+		// keys are already hashed
+		if startKey > endKey {
+			// get results as: [startKey, MaxID) + MaxID + [0, endKey)
+			// because etcd does not have knowledge of the ring and start must be < end
+			// for each range request
+			more = true
+			end1 := s.gateway.MaxID()
+			start2 := s.gateway.ZeroID()
+			res, err = s.globalSt.Get(ctx, startKey, clientv3.WithRange(end1))
+			if returnErr = checkError(err); returnErr != nil {
+				return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
+			}
+			res2, err = s.globalSt.Get(ctx, end1)
+			if returnErr = checkError(err); returnErr != nil {
+				return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
+			}
+			res3, err = s.globalSt.Get(ctx, start2, clientv3.WithRange(endKey))
+		} else {
+			res, err = s.globalSt.Get(ctx, startKey, clientv3.WithRange(endKey))
+		}
+	}
+	returnErr = checkError(err)
+	if returnErr != nil {
+		return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
+	}
+	if (res == nil) || (res.Count == 0) { // should be same as if len(res.Kvs) == 0
+		return nil
+	}
+	for _, kv := range res.Kvs {
+		kvRes = &pb.KV{Key: string(kv.Key), Value: string(kv.Value)}
+		stream.Send(kvRes)
+	}
+	if more {
+		if res2 != nil {
+			for _, kv := range res2.Kvs {
+				kvRes = &pb.KV{Key: string(kv.Key), Value: string(kv.Value)}
+				stream.Send(kvRes)
+			}
+		}
+		if res3 != nil {
+			for _, kv := range res3.Kvs {
+				kvRes = &pb.KV{Key: string(kv.Key), Value: string(kv.Value)}
+				stream.Send(kvRes)
+			}
+		}
+	}
+	return nil
 }
 
 // Run the edge server and connect to the etcd cluster

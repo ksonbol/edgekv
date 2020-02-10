@@ -131,3 +131,9 @@ func (t *transport) canStore(key string) (bool, error) {
 	ans, err := cli.CanStore(key)
 	return ans, err
 }
+
+func (t *transport) rangeGetKVRPC(startKey, endKey string) (map[string]string, error) {
+	cli := t.getRemote()
+	ans, err := cli.RangeGetKV(startKey, endKey)
+	return ans, err
+}

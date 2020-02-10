@@ -3,6 +3,7 @@ package dht
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -148,4 +149,27 @@ func (c *Client) CanStore(key string) (bool, error) {
 	res, err := c.rpcClient.CanStore(ctx, req)
 	return res.GetAnswer(), err
 
+}
+
+// RangeGetKV remotely gets keys in range [startID, endID)
+func (c *Client) RangeGetKV(startKey, endKey string) (map[string]string, error) {
+	res := make(map[string]string)
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.RangeGetRequest{Start: startKey, End: endKey}
+	stream, err := c.rpcClient.RangeGetKV(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		kv, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("RangeGet failed, %v", err)
+		}
+		res[kv.GetKey()] = kv.GetValue()
+	}
+	return res, nil
 }

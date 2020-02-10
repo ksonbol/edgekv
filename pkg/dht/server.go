@@ -103,7 +103,7 @@ func (s *Server) ClosestPrecedingFinger(ctx context.Context, req *pb.ID) (*pb.No
 
 // Notify this node of a possible predecessor change
 func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error) {
-	idChars := s.node.conf.IDChars
+	idChars := s.node.Conf.IDChars
 	pred := s.node.Predecessor()
 	// if pred == s.node {
 	// 	defer close(s.node.nodeJoinCh) // other nodes have joined the system
@@ -139,6 +139,21 @@ func (s *Server) PutKV(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 func (s *Server) DelKV(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	err := s.node.DelKV(req.GetKey())
 	return &pb.DeleteResponse{}, err
+}
+
+// RangeGetKV streams all kv-pairs in the range [startID, endID)
+func (s *Server) RangeGetKV(req *pb.RangeGetRequest, stream pb.Backend_RangeGetKVServer) error {
+	kvs, err := s.node.RangeGetKV(req.GetStart(), req.GetEnd())
+	if err != nil {
+		return err
+	}
+	for k, v := range kvs {
+		kv := &pb.KV{Key: k, Value: v}
+		if err := stream.Send(kv); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CanStore returns true if the node can store the key and false otherwise

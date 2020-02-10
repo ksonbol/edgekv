@@ -12,7 +12,7 @@ import (
 	"github.com/ksonbol/edgekv/utils"
 )
 
-type idGenerator func(s string) string
+type IDGenerator func(s string) string
 
 // // IDBits is the number of bits contained in ID hashes
 // const IDBits = 160 // sha1
@@ -24,10 +24,10 @@ type idGenerator func(s string) string
 type Config struct {
 	IDBits  int
 	IDChars int
-	idFunc  idGenerator
+	IDFunc  IDGenerator
 }
 
-var defaultConfig *Config = &Config{IDBits: 160, IDChars: 40, idFunc: genID}
+var defaultConfig *Config = &Config{IDBits: 160, IDChars: 40, IDFunc: GenID}
 
 // var defaultConfig *Config = &Config{IDBits: 5, IDChars: 3, idFunc: shortID}
 
@@ -44,7 +44,7 @@ type Node struct {
 	predMut    sync.RWMutex
 	succMut    sync.RWMutex
 	closeOnce  sync.Once
-	conf       *Config
+	Conf       *Config
 	storage    Storage
 }
 
@@ -53,7 +53,7 @@ func newBasicNode(addr string, id string, conf *Config) *Node {
 	return &Node{
 		Addr:       addr,
 		ID:         id,
-		conf:       conf,
+		Conf:       conf,
 		shutdownCh: make(chan struct{}),
 		nodeJoinCh: make(chan struct{}),
 	}
@@ -64,7 +64,7 @@ func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 	if conf == nil {
 		conf = defaultConfig
 	}
-	n := newBasicNode(addr, conf.idFunc(addr), conf)
+	n := newBasicNode(addr, conf.IDFunc(addr), conf)
 	n.storage = st
 	n.ft = initFT(n)
 	fillFTFirstNode(n)
@@ -83,13 +83,13 @@ func NewRemoteNode(addr string, id string, localTransport *transport, conf *Conf
 		conf = defaultConfig
 	}
 	if id == "" {
-		id = conf.idFunc(addr)
+		id = conf.IDFunc(addr)
 	}
 	if conf == nil {
 		conf = defaultConfig
 	}
 	n := newBasicNode(addr, id, conf)
-	n.conf = conf
+	n.Conf = conf
 	if localTransport == nil {
 		// this is useful if we want to connect to a single node only
 		n.Transport = newTransport(n, nil, nil)
@@ -117,6 +117,8 @@ func (n *Node) Join(helperNode *Node) error {
 	}
 	go n.stabilize()
 	go n.fixFingers()
+	time.Sleep(3 * time.Second) // wait for stabilization
+	n.getFirstSnapshot()
 	return nil
 }
 
@@ -166,6 +168,11 @@ func (n *Node) CanStoreRPC(key string) (bool, error) {
 	return n.Transport.canStore(key)
 }
 
+// RangeGetKVRPC remotely gets keys in range [startID, endID)
+func (n *Node) RangeGetKVRPC(startID, endID string) (map[string]string, error) {
+	return n.Transport.rangeGetKVRPC(startID, endID)
+}
+
 // GetKV gets the KV from the connected edge group or from a remote group
 func (n *Node) GetKV(key string) (string, error) {
 	var err error
@@ -196,6 +203,15 @@ func (n *Node) PutKV(key, value string) error {
 	return succ.PutKVRPC(key, value)
 }
 
+// putKVLocal stores the kv-pair in the connected group if it is responsible for it
+// otherwise, it deos nothing and returns an error (does not send to other remote groups)
+func (n *Node) putKVLocal(key, value string) error {
+	if n.CanStore(key) {
+		return n.storage.PutKV(key, value)
+	}
+	return fmt.Errorf("Put request failed, key %s does not belong to this group", key)
+}
+
 // DelKV removes the KV from the connected edge group or from a remote group
 func (n *Node) DelKV(key string) error {
 	var succ *Node
@@ -207,6 +223,11 @@ func (n *Node) DelKV(key string) error {
 		return err
 	}
 	return succ.DelKVRPC(key)
+}
+
+// RangeGetKV returns kv-pairs in specified range from connected edge group
+func (n *Node) RangeGetKV(start, end string) (map[string]string, error) {
+	return n.storage.RangeGetKV(start, end)
 }
 
 // Successor returns the successor of node n
@@ -237,7 +258,8 @@ func (n *Node) SetSuccessor(succ *Node) {
 	n.succMut.Unlock()
 }
 
-// stabilize periodically checks the successor links
+// stabilize periodically checks if the successor is up-to-date and notifies them
+// that this node should be their predecessor
 func (n *Node) stabilize() {
 	succ := n.Successor()
 	var newSucc *Node
@@ -259,7 +281,7 @@ func (n *Node) stabilize() {
 			}
 			if newSucc.ID != succ.ID {
 				// if n == successor OR newSucc in (n, successor)
-				if (n == succ) || (inInterval(newSucc.ID, incID(n.ID, n.conf.IDChars), succ.ID)) {
+				if (n == succ) || (inInterval(newSucc.ID, incID(n.ID, n.Conf.IDChars), succ.ID)) {
 					log.Printf("Replacing node %s old successor (%s) with %s\n",
 						n.ID, succ.ID, newSucc.ID)
 					n.SetSuccessor(newSucc)
@@ -288,7 +310,7 @@ func (n *Node) fixFingers() {
 			if n == n.Successor() {
 				continue // wait until the successor link is updated
 			}
-			i := rand.Intn(n.conf.IDBits-1) + 1 // i in (1,IDBits)
+			i := rand.Intn(n.Conf.IDBits-1) + 1 // i in (1,IDBits)
 			succ, err := n.findSuccessor(n.ft[i].start)
 			if err != nil {
 				log.Fatalf("Failed to get successor while running fixFingers %v", err)
@@ -297,6 +319,23 @@ func (n *Node) fixFingers() {
 		case <-n.shutdownCh:
 			ticker.Stop()
 			return
+		}
+	}
+}
+
+func (n *Node) getFirstSnapshot() {
+	succ := n.Successor()
+	if n == succ {
+		<-n.nodeJoinCh // if only node, wait until other nodes join
+	}
+	// get keys in range (predecessor, n.ID]
+	kvs, err := succ.RangeGetKVRPC(incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
+	if err != nil {
+		log.Fatalf("Node initialization failed: could not copy keys from successor")
+	}
+	for k, v := range kvs {
+		if err := n.putKVLocal(k, v); err != nil {
+			log.Fatalf("Failed to add key to connected edge group %v", err)
 		}
 	}
 }
@@ -328,7 +367,7 @@ func (n *Node) findPredecessor(ID string) (*Node, error) {
 	err := *new(error)
 	succ := next.Successor() // current node, no need for RPC yet
 	// while id not in (next.ID, next.Successor.ID]
-	for !inInterval(ID, incID(next.ID, n.conf.IDChars), incID(succ.ID, n.conf.IDChars)) {
+	for !inInterval(ID, incID(next.ID, n.Conf.IDChars), incID(succ.ID, n.Conf.IDChars)) {
 		if next == n {
 			next = next.closestPrecedingFinger(ID)
 		} else {
@@ -356,7 +395,7 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 		if fingerNode == nil {
 			fmt.Printf("FT[%d] with start=%s is not set\n", i, n.ft[i].start)
 		}
-		if inInterval(fingerNode.ID, incID(n.ID, n.conf.IDChars), ID) {
+		if inInterval(fingerNode.ID, incID(n.ID, n.Conf.IDChars), ID) {
 			return fingerNode
 		}
 	}
@@ -366,7 +405,7 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 // CanStore returns true if the key is the responisibility of this node and false otherwise
 func (n *Node) CanStore(key string) bool {
 	// keys is in (pred, n]
-	return inInterval(key, incID(n.Predecessor().ID, n.conf.IDChars), incID(n.ID, n.conf.IDChars))
+	return inInterval(key, incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
 }
 
 // GetFTID returns the ID with ft entry with index idx
@@ -402,7 +441,18 @@ func (n *Node) PrintFT() {
 	}
 }
 
-func genID(s string) string {
+// ZeroID return the Zero ID in the ring
+func (n *Node) ZeroID() string {
+	return appendZeros("0", n.Conf.IDChars)
+}
+
+// MaxID return the maximum possible ID in the ring
+func (n *Node) MaxID() string {
+	return appendZeros("f", n.Conf.IDChars)
+}
+
+// GenID creates a sha1 hash of a given string
+func GenID(s string) string {
 	h := sha1.New()
 	h.Write([]byte(s))
 	hash := hex.EncodeToString(h.Sum(nil))

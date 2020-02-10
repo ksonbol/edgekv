@@ -15,6 +15,8 @@ service Frontend {
     rpc Put(PutRequest) returns (PutResponse) {}
 
     rpc Del(DeleteRequest) returns (DeleteResponse) {}
+    
+    rpc RangeGet(RangeGetRequest) returns (stream KV) {}
 }
 
 message GetRequest {
@@ -44,4 +46,15 @@ message DeleteRequest {
 
 message DeleteResponse {
     int32 status = 1;
+}
+
+message RangeGetRequest {
+    string start = 1;
+    string end = 2;
+    bool type = 3;
+}
+
+message KV {
+    string key = 1;
+    string value = 2;
 }

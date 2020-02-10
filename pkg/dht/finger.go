@@ -11,9 +11,9 @@ type fingerEntry struct {
 }
 
 func initFT(node *Node) []fingerEntry {
-	ft := make([]fingerEntry, node.conf.IDBits)
+	ft := make([]fingerEntry, node.Conf.IDBits)
 	for i := range ft {
-		ft[i] = fingerEntry{start: getFEStart(node.ID, i, node.conf.IDBits, node.conf.IDChars)}
+		ft[i] = fingerEntry{start: getFEStart(node.ID, i, node.Conf.IDBits, node.Conf.IDChars)}
 	}
 	return ft
 }

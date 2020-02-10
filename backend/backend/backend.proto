@@ -31,6 +31,8 @@ service Backend {
     rpc DelKV(DeleteRequest) returns (DeleteResponse) {}
     // check if the node is responsible for a key or not
     rpc CanStore(CanStoreRequest) returns (CanStoreResponse) {}
+    // get KV pairs in a specific range
+    rpc RangeGetKV(RangeGetRequest) returns (stream KV) {}
 }
 
 // DHT messages
@@ -79,4 +81,14 @@ message CanStoreRequest {
 
 message CanStoreResponse {
     bool answer = 1;
+}
+
+message RangeGetRequest {
+    string start = 1;
+    string end = 2;
+}
+
+message KV {
+    string key = 1;
+    string value = 2;
 }

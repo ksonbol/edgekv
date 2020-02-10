@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -19,13 +20,16 @@ type Client interface {
 	Close() error
 
 	// Get the value associated with a key and data type from kv store
-	Get(key string, dataType bool) (string, error)
+	Get(key string, dataType string) (string, error)
+
+	// Get the value associated with a key and data type from kv store
+	RangeGet(startKey string, endKey string, dataType string) (string, error)
 
 	// Put adds the key-value pair or updates the value of given key
-	Put(key string, dataType bool, value string) error
+	Put(key string, dataType string, value string) error
 
 	// Del delete key from server's key-value store
-	Del(key string, dataType bool) error
+	Del(key string, dataType string) error
 }
 
 // EdgekvClient is the client of edgekv key-value store
@@ -107,6 +111,29 @@ func (c *EdgekvClient) Del(key string, dataType string) error {
 		}
 	}
 	return returnErr
+}
+
+// RangeGet returns the keys in the specified range from the storage
+func (c *EdgekvClient) RangeGet(startKey string, endKey string, dataType string) (map[string]string, error) {
+	res := make(map[string]string)
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.RangeGetRequest{Start: startKey, End: endKey, Type: isLocal(dataType)}
+	stream, err := c.rpcClient.RangeGet(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		kv, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("RangeGet failed, %v", err)
+		}
+		res[kv.GetKey()] = kv.GetValue()
+	}
+	return res, nil
 }
 
 func isLocal(dataType string) bool {
