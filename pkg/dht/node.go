@@ -337,7 +337,8 @@ func (n *Node) stabilize() {
 			if n.getState() == joined { // get keys n is responsible for
 				// TODO: should i copy all the keys before notifying successor to make sure no keys are deleted from them
 				// or should i do it in another goroutine to make dht be stable more quickly?
-				go n.loadFirstSnapshot()
+				// we copy keys in same thread to avoid notifying succ before we get all the keys
+				n.loadFirstSnapshot()
 			}
 			if n != succ {
 				succ.NotifyRPC(n)
@@ -436,6 +437,10 @@ func (n *Node) rangeGetAndPutKV(remote *Node, start string, end string) {
 	if err = n.multiPutKV(kvs); err != nil {
 		log.Fatalf("Failed to add keys to node: %v", err)
 	}
+}
+
+func (n *Node) rangeDelKV(start, end string) error {
+	return n.storage.RangeDelKV(start, end)
 }
 
 // findSuccessor finds first node that follows ID

@@ -31,9 +31,14 @@ func (s *EdgeKVStorage) DelKV(key string) error {
 	return s.cl.Del(key, utils.GlobalDataStr)
 }
 
-// RangeGetKV removes the KV from the connected edge group
+// RangeGetKV gets the KV pairs from the connected edge group
 func (s *EdgeKVStorage) RangeGetKV(start, end string) (map[string]string, error) {
 	return s.cl.RangeGet(start, end, utils.GlobalDataStr)
+}
+
+// RangeDelKV removes the KV pairs in range from the connected edge group
+func (s *EdgeKVStorage) RangeDelKV(start, end string) error {
+	return s.cl.RangeDel(start, end, utils.GlobalDataStr)
 }
 
 // Close closes the client connection to the connected edge group

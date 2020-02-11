@@ -115,6 +115,11 @@ func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error)
 			log.Printf("Replacing node %s old predecessor (%s) with %s\n",
 				s.node.ID, pred.ID, new.ID)
 			s.node.SetPredecessor(new)
+			// delete unnecessary keys in range (old Pred, new Pred]
+			if err := s.node.rangeDelKV(incID(pred.ID, s.node.Conf.IDChars),
+				incID(new.ID, s.node.Conf.IDChars)); err != nil {
+				return &pb.EmptyRes{}, fmt.Errorf("Updated successor but failed to delete keys: %v", err)
+			}
 		}
 	}
 	s.node.closeOnce.Do(func() {

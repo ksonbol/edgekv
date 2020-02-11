@@ -238,7 +238,7 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 // For Global storage, given key range is searched in the current group only
 // and the given keys should be the hashed keys
 // For local storage, no hashing is used anyway
-func (s *FrontendServer) RangeGet(req *pb.RangeGetRequest, stream pb.Frontend_RangeGetServer) error {
+func (s *FrontendServer) RangeGet(req *pb.RangeRequest, stream pb.Frontend_RangeGetServer) error {
 	var err error
 	var returnErr error = nil
 	var res, res2, res3 *clientv3.GetResponse
@@ -258,8 +258,7 @@ func (s *FrontendServer) RangeGet(req *pb.RangeGetRequest, stream pb.Frontend_Ra
 		// keys are already hashed
 		if startKey > endKey {
 			// get results as: [startKey, MaxID) + MaxID + [0, endKey)
-			// because etcd does not have knowledge of the ring and start must be < end
-			// for each range request
+			// because etcd does not have knowledge of the ring and start must be < end for each range request
 			more = true
 			end1 := s.gateway.MaxID()
 			start2 := s.gateway.ZeroID()
@@ -302,6 +301,54 @@ func (s *FrontendServer) RangeGet(req *pb.RangeGetRequest, stream pb.Frontend_Ra
 		}
 	}
 	return nil
+}
+
+// RangeDel returns the KV-pairs in the specified range [Start, end) and specified storage
+// For Global storage, given key range is searched in the current group only
+// and the given keys should be the hashed keys
+// For local storage, no hashing is used anyway
+func (s *FrontendServer) RangeDel(ctx context.Context, req *pb.RangeRequest) (*pb.EmptyRes, error) {
+	var err error
+	var returnErr error = nil
+	var returnRes = &pb.EmptyRes{}
+	startKey := req.GetStart()
+	endKey := req.GetEnd()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	switch req.GetType() {
+	case utils.LocalData:
+		if startKey > endKey {
+			return returnRes, fmt.Errorf("Range Del over local data failed: start > end")
+		}
+		_, err = s.localSt.Delete(ctx, startKey, clientv3.WithRange(endKey)) // use the key itself, no hashes used
+		return returnRes, err
+	case utils.GlobalData:
+		// keys are already hashed
+		if startKey > endKey {
+			// delete keys in ranges: [startKey, MaxID) + MaxID + [0, endKey)
+			// because etcd does not have knowledge of the ring and start must be < end for each range request
+			end1 := s.gateway.MaxID()
+			start2 := s.gateway.ZeroID()
+			_, err = s.globalSt.Delete(ctx, startKey, clientv3.WithRange(end1))
+			if returnErr = checkError(err); returnErr != nil {
+				return returnRes, status.Errorf(codes.Unknown, "Range Del failed with error: %v", returnErr)
+			}
+			_, err = s.globalSt.Delete(ctx, end1)
+			if returnErr = checkError(err); returnErr != nil {
+				return returnRes, status.Errorf(codes.Unknown, "Range Del failed with error: %v", returnErr)
+			}
+			_, err = s.globalSt.Delete(ctx, start2, clientv3.WithRange(endKey))
+			if returnErr = checkError(err); returnErr != nil {
+				return returnRes, status.Errorf(codes.Unknown, "Range Del failed with error: %v", returnErr)
+			}
+		} else {
+			_, err = s.globalSt.Delete(ctx, startKey, clientv3.WithRange(endKey))
+			if returnErr = checkError(err); returnErr != nil {
+				return returnRes, status.Errorf(codes.Unknown, "Range Del failed with error: %v", returnErr)
+			}
+		}
+	}
+	return returnRes, nil
 }
 
 // Run the edge server and connect to the etcd cluster

@@ -118,7 +118,7 @@ func (c *EdgekvClient) RangeGet(startKey string, endKey string, dataType string)
 	res := make(map[string]string)
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.RangeGetRequest{Start: startKey, End: endKey, Type: isLocal(dataType)}
+	req := &pb.RangeRequest{Start: startKey, End: endKey, Type: isLocal(dataType)}
 	stream, err := c.rpcClient.RangeGet(ctx, req)
 	if err != nil {
 		return nil, err
@@ -134,6 +134,15 @@ func (c *EdgekvClient) RangeGet(startKey string, endKey string, dataType string)
 		res[kv.GetKey()] = kv.GetValue()
 	}
 	return res, nil
+}
+
+// RangeDel removes the keys in the specified range from the storage
+func (c *EdgekvClient) RangeDel(startKey string, endKey string, dataType string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.RangeRequest{Start: startKey, End: endKey, Type: isLocal(dataType)}
+	_, err := c.rpcClient.RangeDel(ctx, req)
+	return err
 }
 
 func isLocal(dataType string) bool {
