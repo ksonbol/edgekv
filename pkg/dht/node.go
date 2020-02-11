@@ -12,6 +12,7 @@ import (
 	"github.com/ksonbol/edgekv/utils"
 )
 
+// IDGenerator defines the type for generation IDs
 type IDGenerator func(s string) string
 
 // // IDBits is the number of bits contained in ID hashes
@@ -46,6 +47,7 @@ type Node struct {
 	closeOnce  sync.Once
 	Conf       *Config
 	storage    Storage
+	leaving    bool // set true when node is leaving the ring
 }
 
 // newBasicNode creates a node with the essential parameters
@@ -117,6 +119,7 @@ func (n *Node) Join(helperNode *Node) error {
 	}
 	go n.stabilize()
 	go n.fixFingers()
+	go n.checkPredecessor()
 	time.Sleep(3 * time.Second) // wait for stabilization
 	n.getFirstSnapshot()
 	return nil
@@ -170,7 +173,12 @@ func (n *Node) CanStoreRPC(key string) (bool, error) {
 
 // RangeGetKVRPC remotely gets keys in range [startID, endID)
 func (n *Node) RangeGetKVRPC(startID, endID string) (map[string]string, error) {
-	return n.Transport.rangeGetKVRPC(startID, endID)
+	return n.Transport.rangeGetKV(startID, endID)
+}
+
+// IsLeavingRPC checks if remote node is leaving the dht ring
+func (n *Node) IsLeavingRPC() (bool, error) {
+	return n.Transport.isLeaving()
 }
 
 // GetKV gets the KV from the connected edge group or from a remote group
@@ -274,6 +282,20 @@ func (n *Node) stabilize() {
 			if n == succ {
 				newSucc = succ.Predecessor()
 			} else {
+				leaving, er := succ.IsLeavingRPC()
+				if er != nil {
+					log.Fatalf("Failed to run the stabilizer algorithm %v", er)
+				}
+				if leaving {
+					// if successor is leaving, use their successor
+					newSucc, err = succ.GetSuccessorRPC()
+					if err != nil {
+						log.Fatalf("Failed to run the stabilizer algorithm %v", err)
+					}
+					n.SetSuccessor(newSucc)
+					// we don't notify new successor here, they will realize us on their own
+					continue
+				}
 				newSucc, err = succ.GetPredecessorRPC()
 				if err != nil {
 					log.Fatalf("Failed to run the stabilizer algorithm %v", err)
@@ -316,6 +338,40 @@ func (n *Node) fixFingers() {
 				log.Fatalf("Failed to get successor while running fixFingers %v", err)
 			}
 			n.ft[i].node = succ
+		case <-n.shutdownCh:
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+// fixFingers periodically checks if predecessor is available or leaving the network
+func (n *Node) checkPredecessor() {
+	var pred *Node
+	var err error
+	var leaving bool
+	if n == n.Successor() {
+		<-n.nodeJoinCh // wait until other nodes join
+	}
+	ticker := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			pred = n.Predecessor()
+			if n == pred {
+				continue // wait until the predecessor link is updated
+			}
+			leaving, err = pred.IsLeavingRPC()
+			if err != nil {
+				log.Fatalf("Error while communicating with predecessor %v", err)
+			}
+			if leaving {
+				pred, err = pred.GetPredecessorRPC()
+				if err != nil {
+					log.Fatalf("Error while communicating with predecessor %v", err)
+				}
+				n.SetPredecessor(pred)
+			}
 		case <-n.shutdownCh:
 			ticker.Stop()
 			return
@@ -415,13 +471,15 @@ func (n *Node) GetFTID(idx int) string {
 
 // Leave the DHT ring and stop the node
 func (n *Node) Leave() error {
+	n.setLeaving()
+	close(n.shutdownCh)          // stop stabilize and fixFinger goroutines
+	time.Sleep(60 * time.Second) // give enough time for other nodes to stabilize
 	return n.shutDown()
 	// TODO: any other tasks?
 	// inform other nodes or copy keys to them before leaving?
 }
 
 func (n *Node) shutDown() error {
-	close(n.shutdownCh)
 	if n.server != nil {
 		n.server.stop()
 	}
@@ -432,6 +490,14 @@ func (n *Node) shutDown() error {
 	n.ft = nil
 	n.pred = nil
 	return nil
+}
+
+func (n *Node) isLeaving() bool {
+	return n.leaving
+}
+
+func (n *Node) setLeaving() {
+	n.leaving = true
 }
 
 // PrintFT prints the finger table of node n

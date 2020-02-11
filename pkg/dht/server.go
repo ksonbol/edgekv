@@ -162,6 +162,12 @@ func (s *Server) CanStore(ctx context.Context, req *pb.CanStoreRequest) (*pb.Can
 	return &pb.CanStoreResponse{Answer: ans}, nil
 }
 
+// IsLeaving returns true if node is leaving the dht ring
+func (s *Server) IsLeaving(ctx context.Context, req *pb.EmptyReq) (*pb.IsLeavingRes, error) {
+	leaving := s.node.isLeaving()
+	return &pb.IsLeavingRes{Leaving: leaving}, nil
+}
+
 func (s *Server) stop() {
 	s.grpcServer.GracefulStop() // wait for pending RPCs to finish, then stop
 }

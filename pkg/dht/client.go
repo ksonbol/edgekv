@@ -173,3 +173,12 @@ func (c *Client) RangeGetKV(startKey, endKey string) (map[string]string, error) 
 	}
 	return res, nil
 }
+
+// IsLeaving checks if remote node is leaving the dht ring
+func (c *Client) IsLeaving() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.EmptyReq{}
+	res, err := c.rpcClient.IsLeaving(ctx, req)
+	return res.GetLeaving(), err
+}
