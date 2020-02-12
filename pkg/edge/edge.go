@@ -95,10 +95,14 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 	switch req.GetType() {
 	case utils.LocalData:
 		res, err = s.localSt.Get(ctx, key) // get the key itself, no hashes used
+		// log.Println("All local keys in this edge group")
+		// log.Println(s.localSt.Get(ctx, "", clientv3.WithPrefix()))
 	case utils.GlobalData:
 		if s.gateway == nil {
 			log.Fatal("Get request failed: gateway node not initialized at the edge")
 		}
+		// log.Println("All global keys in this edge group")
+		// log.Println(s.globalSt.Get(ctx, "", clientv3.WithPrefix()))
 		hashedKey := s.gateway.Conf.IDFunc(key)
 		// if request is coming from the gateway node, we don't ask it again if key
 		// is our responsiblity
@@ -159,6 +163,7 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 		}
 		hashedKey := s.gateway.Conf.IDFunc(key)
 		if senderAddr == s.gateway.Addr {
+			// log.Printf("Node %s:%d Directly writing key %s to edge group", s.hostname, s.port, hashedKey)
 			_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
 		} else {
 			ans, er := s.gateway.CanStoreRPC(hashedKey)
@@ -166,8 +171,10 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 				log.Fatalf("Put request failed: communication with gateway node failed")
 			}
 			if ans {
+				// log.Printf("Node %s:%d Writing key %s to local edge group", s.hostname, s.port, hashedKey)
 				_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
 			} else {
+				// log.Printf("Node %s:%d Writing key %s to remote edge group", s.hostname, s.port, hashedKey)
 				err = s.gateway.PutKVRPC(hashedKey, req.GetValue())
 			}
 		}

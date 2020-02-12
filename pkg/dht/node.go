@@ -82,7 +82,7 @@ func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 	hostname, port := utils.SplitAddress(addr)
 	n.server = NewServer(hostname, port, n)
 	n.server.RunInsecure()
-	fmt.Printf("node %s: Server is running", addr)
+	fmt.Printf("node %s: Server is running\n", addr)
 	n.Transport = newTransport(n, nil, nil)
 	n.setState(created)
 	return n
@@ -122,13 +122,18 @@ func (n *Node) Join(helperNode *Node) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Setting node %s successor 1st time: %s\n", n.ID, succ.ID)
+		// log.Printf("Setting node %s successor 1st time: %s\n", n.ID, succ.ID)
 
 		n.SetSuccessor(succ)
 	}
-	n.setState(joined)
+	if helperNode == nil {
+		n.setState(ready) // first node is already in a ready state
+	} else {
+		n.setState(joined)
+	}
 	go n.stabilize()
 	go n.fixFingers()
+	time.Sleep(5 * time.Second) // wait until nodes stabilize
 	go n.checkPredecessor()
 	return nil
 }
@@ -217,11 +222,13 @@ func (n *Node) PutKV(key, value string) error {
 	var succ *Node
 	var err error
 	if n.CanStore(key) {
+		// log.Printf("Put (%s, %s) into dht node (%s, %s) edge group", key, value, n.Addr, n.ID)
 		return n.storage.PutKV(key, value)
 	}
 	if succ, err = n.findSuccessor(key); err != nil {
 		return err
 	}
+	// log.Printf("Send (%s, %s) to node (%s, %s) edge group", key, value, succ.Addr, succ.ID)
 	return succ.PutKVRPC(key, value)
 }
 
@@ -258,6 +265,9 @@ func (n *Node) DelKV(key string) error {
 func (n *Node) RangeGetKV(start, end string) (map[string]string, error) {
 	if n.getState() < ready {
 		return nil, fmt.Errorf("request failed, node not ready yet")
+	}
+	if n.storage == nil {
+		return nil, nil
 	}
 	return n.storage.RangeGetKV(start, end)
 }
@@ -328,13 +338,13 @@ func (n *Node) stabilize() {
 			if newSucc.ID != succ.ID {
 				// if n == successor (only node in ring) OR newSucc in (n, successor)
 				if (n == succ) || (inInterval(newSucc.ID, incID(n.ID, n.Conf.IDChars), succ.ID)) {
-					log.Printf("Replacing node %s old successor (%s) with %s\n",
-						n.ID, succ.ID, newSucc.ID)
+					// log.Printf("Replacing node %s old successor (%s) with %s\n",
+					// 	n.ID, succ.ID, newSucc.ID)
 					n.SetSuccessor(newSucc)
 				}
 			}
-			succ = n.Successor()        // get the possibly updated successor
-			if n.getState() == joined { // get keys n is responsible for
+			succ = n.Successor()                                // get the possibly updated successor
+			if (n.getState() == joined) && (n.storage != nil) { // get keys n is responsible for
 				// TODO: should i copy all the keys before notifying successor to make sure no keys are deleted from them
 				// or should i do it in another goroutine to make dht be stable more quickly?
 				// we copy keys in same thread to avoid notifying succ before we get all the keys
@@ -405,7 +415,9 @@ func (n *Node) checkPredecessor() {
 				// do that in another go routine since it may take some time to finish
 				// get all keys in range (newPred, leavingPred] from leavingPred
 				// TODO: get and load keys using a snaphot instead of a range query
-				go n.rangeGetAndPutKV(pred, incID(newPred.ID, n.Conf.IDChars), incID(pred.ID, n.Conf.IDChars))
+				if n.storage != nil {
+					go n.rangeGetAndPutKV(pred, incID(newPred.ID, n.Conf.IDChars), incID(pred.ID, n.Conf.IDChars))
+				}
 			}
 		case <-n.shutdownCh:
 			ticker.Stop()
@@ -417,6 +429,7 @@ func (n *Node) checkPredecessor() {
 // gets keys of n's responsibility from n's successor
 // should be called once during join process
 func (n *Node) loadFirstSnapshot() {
+	time.Sleep(3 * time.Second) // wait for other nodes to be ready
 	succ := n.Successor()
 	// succ has (succ.pred, succ], n asks for (succ, n]
 	// n will get the intersection which is (succ.pred, n]
@@ -432,7 +445,8 @@ func (n *Node) rangeGetAndPutKV(remote *Node, start string, end string) {
 	}
 	kvs, err := remote.RangeGetKVRPC(start, end)
 	if err != nil {
-		log.Fatalf("Could not copy keys from node %s: %v", remote.ID, err)
+		log.Fatalf("Node %s: Could not copy keys from node %s: %v", n.idFmt(),
+			remote.idFmt(), err)
 	}
 	if err = n.multiPutKV(kvs); err != nil {
 		log.Fatalf("Failed to add keys to node: %v", err)
@@ -511,6 +525,9 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 // CanStore returns true if the key is the responisibility of this node and false otherwise
 func (n *Node) CanStore(key string) bool {
 	// keys is in (pred, n]
+	if n.Successor() == n { // only node in ring
+		return true
+	}
 	return inInterval(key, incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
 }
 
@@ -586,6 +603,10 @@ func (n *Node) setState(st int) {
 	n.stateMut.Lock()
 	defer n.stateMut.Unlock()
 	n.state = st
+}
+
+func (n *Node) idFmt() string {
+	return fmt.Sprintf("(%s, %s)", n.Addr, n.ID)
 }
 
 // GenID creates a sha1 hash of a given string

@@ -52,7 +52,7 @@ func NewClient(isLocal bool) *clientv3.Client {
 	})
 	if err != nil {
 		// handle error!
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to etcd cluster of endpoints %v %v", endpoints, err)
 	}
 	return cli
 }

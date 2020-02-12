@@ -112,13 +112,15 @@ func (s *Server) Notify(ctx context.Context, req *pb.Node) (*pb.EmptyRes, error)
 	if pred.ID != req.GetId() { // for readability and to avoid uneeded calculations
 		if (pred == s.node) || inInterval(req.GetId(), incID(pred.ID, idChars), s.node.ID) {
 			new := NewRemoteNode(req.GetAddr(), req.GetId(), s.node.Transport, nil)
-			log.Printf("Replacing node %s old predecessor (%s) with %s\n",
-				s.node.ID, pred.ID, new.ID)
+			// log.Printf("Replacing node %s old predecessor (%s) with %s\n",
+			// 	s.node.ID, pred.ID, new.ID)
 			s.node.SetPredecessor(new)
-			// delete unnecessary keys in range (old Pred, new Pred]
-			if err := s.node.rangeDelKV(incID(pred.ID, s.node.Conf.IDChars),
-				incID(new.ID, s.node.Conf.IDChars)); err != nil {
-				return &pb.EmptyRes{}, fmt.Errorf("Updated successor but failed to delete keys: %v", err)
+			if s.node.storage != nil {
+				// delete unnecessary keys in range (old Pred, new Pred]
+				if err := s.node.rangeDelKV(incID(pred.ID, s.node.Conf.IDChars),
+					incID(new.ID, s.node.Conf.IDChars)); err != nil {
+					return &pb.EmptyRes{}, fmt.Errorf("Updated successor but failed to delete keys: %v", err)
+				}
 			}
 		}
 	}
