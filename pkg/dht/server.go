@@ -169,6 +169,12 @@ func (s *Server) CanStore(ctx context.Context, req *pb.CanStoreRequest) (*pb.Can
 	return &pb.CanStoreResponse{Answer: ans}, nil
 }
 
+// GetState returns the state of node
+func (s *Server) GetState(ctx context.Context, req *pb.EmptyReq) (*pb.State, error) {
+	ans := s.node.getState()
+	return &pb.State{State: int32(ans)}, nil
+}
+
 // IsLeaving returns true if node is leaving the dht ring
 func (s *Server) IsLeaving(ctx context.Context, req *pb.EmptyReq) (*pb.IsLeavingRes, error) {
 	leaving := s.node.isLeaving()

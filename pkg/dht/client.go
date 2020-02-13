@@ -182,3 +182,12 @@ func (c *Client) IsLeaving() (bool, error) {
 	res, err := c.rpcClient.IsLeaving(ctx, req)
 	return res.GetLeaving(), err
 }
+
+// GetState gets state from remote node
+func (c *Client) GetState() (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
+	defer cancel()
+	req := &pb.EmptyReq{}
+	res, err := c.rpcClient.GetState(ctx, req)
+	return int(res.GetState()), err
+}

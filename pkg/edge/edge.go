@@ -99,7 +99,14 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 		// log.Println(s.localSt.Get(ctx, "", clientv3.WithPrefix()))
 	case utils.GlobalData:
 		if s.gateway == nil {
-			log.Fatal("Get request failed: gateway node not initialized at the edge")
+			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+		}
+		state, err := s.gateway.GetStateRPC()
+		if err != nil {
+			return returnRes, fmt.Errorf("failed to get state of gateway node")
+		}
+		if state < dht.Ready { // could happen if gateway node was created but didnt join dht
+			return returnRes, fmt.Errorf("edge node %s not connected to dht yet or gateway node not ready", s.print())
 		}
 		// log.Println("All global keys in this edge group")
 		// log.Println(s.globalSt.Get(ctx, "", clientv3.WithPrefix()))
@@ -153,22 +160,35 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 	senderAddr := sender.Addr.String()
 	key := req.GetKey()
 	// var res *clientv3.PutResponse
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// defer cancel()
 	switch req.GetType() {
 	case utils.LocalData:
 		_, err = s.localSt.Put(ctx, key, req.GetValue())
 	case utils.GlobalData:
 		if s.gateway == nil {
-			log.Fatal("Put request failed: gateway node not initialized at the edge")
+			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+		}
+		state, err := s.gateway.GetStateRPC()
+		if err != nil {
+			return returnRes, fmt.Errorf("failed to get state of gateway node")
+		}
+		if state < dht.Joined { // in order to reach ready state, a node may need to put some keys initially
+			return returnRes, fmt.Errorf("edge node %s not connected to dht yet", s.print())
 		}
 		hashedKey := s.gateway.Conf.IDFunc(key)
 		if senderAddr == s.gateway.Addr {
+			log.Println("Put request coming directly from gateway node")
+			// TODO: does this ever work??? when gateway sends a request, it still uses a client
+			// so which address is used?
+			// probably this is the problem, since the node does not know its pred. yet, canstore fails
+			// so it sends the request again in an rpc (infinite one?)
 			// log.Printf("Node %s:%d Directly writing key %s to edge group", s.hostname, s.port, hashedKey)
 			_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
 		} else {
-			ans, er := s.gateway.CanStoreRPC(hashedKey)
-			if er != nil {
-				log.Fatalf("Put request failed: communication with gateway node failed")
+			ans, err := s.gateway.CanStoreRPC(hashedKey)
+			if err != nil {
+				log.Fatalf("communication with gateway node failed: %v\n", err)
 			}
 			if ans {
 				// log.Printf("Node %s:%d Writing key %s to local edge group", s.hostname, s.port, hashedKey)
@@ -205,7 +225,14 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 		_, err = s.localSt.Delete(ctx, key)
 	case utils.GlobalData:
 		if s.gateway == nil {
-			log.Fatal("Delete request failed: gateway node not initialized at the edge")
+			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+		}
+		state, err := s.gateway.GetStateRPC()
+		if err != nil {
+			return returnRes, fmt.Errorf("failed to get state of gateway node")
+		}
+		if state < dht.Ready { // could happen if gateway node was created but didnt join dht
+			return returnRes, fmt.Errorf("edge node %s not connected to dht yet or gateway node not ready", s.print())
 		}
 		hashedKey := s.gateway.Conf.IDFunc(key)
 		if senderAddr == s.gateway.Addr {
@@ -263,6 +290,16 @@ func (s *FrontendServer) RangeGet(req *pb.RangeRequest, stream pb.Frontend_Range
 		res, err = s.localSt.Get(ctx, startKey, clientv3.WithRange(endKey)) // get the key itself, no hashes used
 	case utils.GlobalData:
 		// keys are already hashed
+		if s.gateway == nil {
+			return fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+		}
+		state, err := s.gateway.GetStateRPC()
+		if err != nil {
+			return fmt.Errorf("failed to get state of gateway node")
+		}
+		if state < dht.Ready { // could happen if gateway node was created but didnt join dht
+			return fmt.Errorf("edge node %s not connected to dht yet or gateway node not ready", s.print())
+		}
 		if startKey > endKey {
 			// get results as: [startKey, MaxID) + MaxID + [0, endKey)
 			// because etcd does not have knowledge of the ring and start must be < end for each range request
@@ -331,6 +368,16 @@ func (s *FrontendServer) RangeDel(ctx context.Context, req *pb.RangeRequest) (*p
 		return returnRes, err
 	case utils.GlobalData:
 		// keys are already hashed
+		if s.gateway == nil {
+			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+		}
+		state, err := s.gateway.GetStateRPC()
+		if err != nil {
+			return returnRes, fmt.Errorf("failed to get state of gateway node")
+		}
+		if state < dht.Ready { // could happen if gateway node was created but didnt join dht
+			return returnRes, fmt.Errorf("edge node %s not connected to dht yet or gateway node not ready", s.print())
+		}
 		if startKey > endKey {
 			// delete keys in ranges: [startKey, MaxID) + MaxID + [0, endKey)
 			// because etcd does not have knowledge of the ring and start must be < end for each range request
@@ -398,4 +445,8 @@ func (s *FrontendServer) Close() error {
 		return fmt.Errorf("failed to close etcd client %v, %v", err1, err2)
 	}
 	return nil
+}
+
+func (s *FrontendServer) print() string {
+	return fmt.Sprintf("%s:%d", s.hostname, s.port)
 }

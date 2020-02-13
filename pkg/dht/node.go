@@ -31,9 +31,12 @@ type Config struct {
 var defaultConfig *Config = &Config{IDBits: 160, IDChars: 40, IDFunc: GenID}
 
 const (
-	created = 0
-	joined  = 1
-	ready   = 2
+	// Created state means node was Created but didnt join the dht ring yet
+	Created = 0
+	// Joined state means node has Joined the dht ring but is not ready for storage yet
+	Joined = 1
+	// Ready state means node has joined the dht ring and is Ready for storage oprations
+	Ready = 2
 )
 
 // var defaultConfig *Config = &Config{IDBits: 5, IDChars: 3, idFunc: shortID}
@@ -84,7 +87,7 @@ func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 	n.server.RunInsecure()
 	fmt.Printf("node %s: Server is running\n", addr)
 	n.Transport = newTransport(n, nil, nil)
-	n.setState(created)
+	n.setState(Created)
 	return n
 }
 
@@ -127,9 +130,9 @@ func (n *Node) Join(helperNode *Node) error {
 		n.SetSuccessor(succ)
 	}
 	if helperNode == nil {
-		n.setState(ready) // first node is already in a ready state
+		n.setState(Ready) // first node is already in a ready state
 	} else {
-		n.setState(joined)
+		n.setState(Joined)
 	}
 	go n.stabilize()
 	go n.fixFingers()
@@ -194,9 +197,14 @@ func (n *Node) IsLeavingRPC() (bool, error) {
 	return n.Transport.isLeaving()
 }
 
+// GetStateRPC gets the state of remote node
+func (n *Node) GetStateRPC() (int, error) {
+	return n.Transport.getState()
+}
+
 // GetKV gets the KV from the connected edge group or from a remote group
 func (n *Node) GetKV(key string) (string, error) {
-	if n.getState() < ready {
+	if n.getState() < Ready {
 		return "", fmt.Errorf("request failed, node not ready yet")
 	}
 	var err error
@@ -216,7 +224,7 @@ func (n *Node) GetKV(key string) (string, error) {
 
 // PutKV puts the KV to the connected edge group or to a remote group
 func (n *Node) PutKV(key, value string) error {
-	if n.getState() < ready {
+	if n.getState() < Ready {
 		return fmt.Errorf("request failed, node not ready yet")
 	}
 	var succ *Node
@@ -232,22 +240,23 @@ func (n *Node) PutKV(key, value string) error {
 	return succ.PutKVRPC(key, value)
 }
 
-// putKVLocal stores the kv-pair in the connected group if it is responsible for it
-// otherwise, it deos nothing and returns an error (does not send to other remote groups)
+// putKVLocal stores the kv-pair directly in the connected group
+// Warning: it does not check if the key is in range, since this is useful for writing first snapshot
+// before realizing the correct predecessor
 func (n *Node) putKVLocal(key, value string) error {
-	if n.getState() < joined {
+	if n.getState() < Joined {
 		// need to join dht first to stabilize and update predecessor
 		return fmt.Errorf("request failed, node not ready yet")
 	}
-	if n.CanStore(key) {
-		return n.storage.PutKV(key, value)
-	}
-	return fmt.Errorf("Put request failed, key %s does not belong to this group", key)
+	// if n.CanStore(key) {
+	return n.storage.PutKV(key, value)
+	// }
+	// return fmt.Errorf("Put request failed, key %s does not belong to this group", key)
 }
 
 // DelKV removes the KV from the connected edge group or from a remote group
 func (n *Node) DelKV(key string) error {
-	if n.getState() < ready {
+	if n.getState() < Ready {
 		return fmt.Errorf("request failed, node not ready yet")
 	}
 	var succ *Node
@@ -263,7 +272,7 @@ func (n *Node) DelKV(key string) error {
 
 // RangeGetKV returns kv-pairs in specified range from connected edge group
 func (n *Node) RangeGetKV(start, end string) (map[string]string, error) {
-	if n.getState() < ready {
+	if n.getState() < Ready {
 		return nil, fmt.Errorf("request failed, node not ready yet")
 	}
 	if n.storage == nil {
@@ -344,11 +353,13 @@ func (n *Node) stabilize() {
 				}
 			}
 			succ = n.Successor()                                // get the possibly updated successor
-			if (n.getState() == joined) && (n.storage != nil) { // get keys n is responsible for
+			if (n.getState() == Joined) && (n.storage != nil) { // get keys n is responsible for
 				// TODO: should i copy all the keys before notifying successor to make sure no keys are deleted from them
 				// or should i do it in another goroutine to make dht be stable more quickly?
 				// we copy keys in same thread to avoid notifying succ before we get all the keys
-				n.loadFirstSnapshot()
+				if err := n.loadFirstSnapshot(); err != nil {
+					log.Fatalf("Failed to get first snapshot: %v", err)
+				}
 			}
 			if n != succ {
 				succ.NotifyRPC(n)
@@ -393,7 +404,7 @@ func (n *Node) checkPredecessor() {
 	if n == n.Successor() {
 		<-n.nodeJoinCh // wait until other nodes join
 	}
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:
@@ -428,29 +439,49 @@ func (n *Node) checkPredecessor() {
 
 // gets keys of n's responsibility from n's successor
 // should be called once during join process
-func (n *Node) loadFirstSnapshot() {
-	time.Sleep(3 * time.Second) // wait for other nodes to be ready
+func (n *Node) loadFirstSnapshot() error {
+	time.Sleep(1 * time.Second) // wait for other nodes to be ready
 	succ := n.Successor()
-	// succ has (succ.pred, succ], n asks for (succ, n]
-	// n will get the intersection which is (succ.pred, n]
-	n.rangeGetAndPutKV(succ, incID(succ.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
-	n.setState(ready)
+	var err error
+	// this seems to raise an error
+	// // succ has (succ.pred, succ], n asks for (succ, n]
+	// // n will get the intersection which is (succ.pred, n]
+	// n.rangeGetAndPutKV(succ, incID(succ.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
+	succPred, err := succ.GetPredecessorRPC()
+	if err != nil {
+		return fmt.Errorf("could not get predecessor of node %s via RPC: %v", succ.idFmt(), err)
+	}
+	if succPred.ID == n.ID {
+		err = n.rangeGetAndPutKV(succ, incID(succ.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars)) // (succ, n]
+
+	} else {
+		err = n.rangeGetAndPutKV(succ, incID(succPred.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars)) // (succPred, n]
+	}
+	if err != nil {
+		return fmt.Errorf("Could not load initial keys to node %s: %v", n.idFmt(), err)
+	}
+	n.setState(Ready)
+	return nil
 }
 
 // rangeGetAndPutKV gets keys in range [start, end) from remote node and writes them to local edge group
-func (n *Node) rangeGetAndPutKV(remote *Node, start string, end string) {
-	if n.getState() < joined {
+func (n *Node) rangeGetAndPutKV(remote *Node, start string, end string) error {
+	if n.getState() < Joined {
 		// need to join dht first to stabilize and update predecessor
-		log.Fatalf("request failed, node not ready yet")
+		return fmt.Errorf("gateway node not ready yet")
 	}
 	kvs, err := remote.RangeGetKVRPC(start, end)
 	if err != nil {
-		log.Fatalf("Node %s: Could not copy keys from node %s: %v", n.idFmt(),
+		return fmt.Errorf("Node %s: Could not copy keys from node %s: %v", n.idFmt(),
 			remote.idFmt(), err)
 	}
-	if err = n.multiPutKV(kvs); err != nil {
-		log.Fatalf("Failed to add keys to node: %v", err)
+	if (kvs == nil) || (len(kvs) == 0) {
+		log.Printf("No keys found at node %s, so will start with an empty keyset!\n", remote.idFmt())
 	}
+	if err = n.multiPutKV(kvs); err != nil {
+		return fmt.Errorf("failed to add keys to node %s: %v", n.idFmt(), err)
+	}
+	return nil
 }
 
 func (n *Node) rangeDelKV(start, end string) error {
@@ -459,7 +490,7 @@ func (n *Node) rangeDelKV(start, end string) error {
 
 // findSuccessor finds first node that follows ID
 func (n *Node) findSuccessor(ID string) (*Node, error) {
-	if n.getState() < joined {
+	if n.getState() < Joined {
 		return nil, fmt.Errorf("node did not join the DHT ring yet, try again later")
 	}
 	pred, err := n.findPredecessor(ID)
@@ -525,7 +556,7 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 // CanStore returns true if the key is the responisibility of this node and false otherwise
 func (n *Node) CanStore(key string) bool {
 	// keys is in (pred, n]
-	if n.Successor() == n { // only node in ring
+	if (n.Successor() == n) || (n.Predecessor() == n) { // only node in ring || new node
 		return true
 	}
 	return inInterval(key, incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
@@ -539,8 +570,9 @@ func (n *Node) GetFTID(idx int) string {
 func (n *Node) multiPutKV(kvs map[string]string) error {
 	for k, v := range kvs {
 		if err := n.putKVLocal(k, v); err != nil {
-			log.Fatalf("Failed to add key %s to node: %v", k, err)
+			log.Fatalf("Failed to add key %s to node %s: %v", k, n.idFmt(), err)
 		}
+		// log.Printf("Wrote kv: %s - %s to node %s\n", k, v, n.idFmt())
 	}
 	return nil
 }
@@ -549,10 +581,9 @@ func (n *Node) multiPutKV(kvs map[string]string) error {
 func (n *Node) Leave() error {
 	n.setLeaving()
 	close(n.shutdownCh)          // stop stabilize and fixFinger goroutines
-	time.Sleep(60 * time.Second) // give enough time for other nodes to stabilize
+	time.Sleep(20 * time.Second) // give enough time for other nodes to stabilize
 	return n.shutDown()
 	// TODO: any other tasks?
-	// inform other nodes or copy keys to them before leaving?
 }
 
 func (n *Node) shutDown() error {
@@ -593,6 +624,7 @@ func (n *Node) MaxID() string {
 	return appendZeros("f", n.Conf.IDChars)
 }
 
+// GetState returns the state of the node: created, joined, or ready
 func (n *Node) getState() int {
 	n.stateMut.RLock()
 	defer n.stateMut.RUnlock()

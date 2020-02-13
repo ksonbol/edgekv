@@ -22,7 +22,9 @@ service Backend {
     // notify node of possible predecessor change
     rpc Notify(Node) returns (EmptyRes) {}
     // check if node is leaving the dht ring
-    rpc IsLeaving(EmptyReq) returns (IsLeavingRes) {} 
+    rpc IsLeaving(EmptyReq) returns (IsLeavingRes) {}
+    // get the node state: Created, Joined, or Ready
+    rpc GetState(EmptyReq) returns (State) {}
     
     // storage RPCs
     // get value associated with key from remote edgekv group
@@ -97,4 +99,8 @@ message KV {
 
 message IsLeavingRes {
     bool leaving = 1;
+}
+
+message State {
+    int32 state = 1;
 }

@@ -143,3 +143,9 @@ func (t *transport) isLeaving() (bool, error) {
 	ans, err := cli.IsLeaving()
 	return ans, err
 }
+
+func (t *transport) getState() (int, error) {
+	cli := t.getRemote()
+	ans, err := cli.GetState()
+	return ans, err
+}
