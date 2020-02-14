@@ -115,12 +115,12 @@ func main() {
 	time.Sleep(5 * time.Second) // wait for dht to stabilize
 	// testing storage
 	fmt.Println("Putting keys in global storage")
-	fmt.Println(cli.Put("k", utils.GlobalDataStr, "global"))
-	fmt.Println(cli.Put("k2", utils.GlobalDataStr, "global2"))
-	fmt.Println(cli.Put("k3", utils.GlobalDataStr, "global3"))
-	fmt.Println(cli.Put("k4", utils.GlobalDataStr, "global4"))
-	fmt.Println(cli.Put("k5", utils.GlobalDataStr, "global5"))
-	fmt.Println(cli.Put("k6", utils.GlobalDataStr, "global6"))
+	fmt.Println(cli.Put("k", utils.GlobalDataStr, "global", false))
+	fmt.Println(cli.Put("k2", utils.GlobalDataStr, "global2", false))
+	fmt.Println(cli.Put("k3", utils.GlobalDataStr, "global3", false))
+	fmt.Println(cli.Put("k4", utils.GlobalDataStr, "global4", false))
+	fmt.Println(cli.Put("k5", utils.GlobalDataStr, "global5", false))
+	fmt.Println(cli.Put("k6", utils.GlobalDataStr, "global6", false))
 
 	for {
 		var cmd string

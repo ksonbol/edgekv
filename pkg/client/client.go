@@ -20,16 +20,19 @@ type Client interface {
 	Close() error
 
 	// Get the value associated with a key and data type from kv store
-	Get(key string, dataType string) (string, error)
+	Get(key string, dataType string, isHashed bool) (string, error)
 
-	// Get the value associated with a key and data type from kv store
-	RangeGet(startKey string, endKey string, dataType string) (string, error)
+	// RangeGet retrieves all key-value pairs in the given range
+	RangeGet(startKey string, endKey string, dataType string, isHashed bool) (string, error)
 
 	// Put adds the key-value pair or updates the value of given key
-	Put(key string, dataType string, value string) error
+	Put(key string, dataType string, value string, isHashed bool) error
 
 	// Del delete key from server's key-value store
-	Del(key string, dataType string) error
+	Del(key string, dataType string, isHashed bool) error
+
+	// RangeDel deletes all key-value pairs in the given range
+	RangeDel(startKey string, endKey string, dataType string, isHashed bool) error
 }
 
 // EdgekvClient is the client of edgekv key-value store
@@ -76,29 +79,29 @@ func (c *EdgekvClient) Close() error {
 }
 
 // Get the value associated with a key and data type from kv store
-func (c *EdgekvClient) Get(key string, dataType string) (string, error) {
+func (c *EdgekvClient) Get(key string, dataType string, isHashed bool) (string, error) {
 	// TODO: should we change this timeout?
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.GetRequest{Key: key, Type: isLocal(dataType)}
+	req := &pb.GetRequest{Key: key, Type: isLocal(dataType), IsHashed: isHashed}
 	res, err := c.rpcClient.Get(ctx, req)
 	return res.GetValue(), err
 }
 
 // Put adds the key-value pair or updates the value of given key
-func (c *EdgekvClient) Put(key string, dataType string, value string) error {
+func (c *EdgekvClient) Put(key string, dataType string, value string, isHashed bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.PutRequest{Key: key, Type: isLocal(dataType), Value: value}
+	req := &pb.PutRequest{Key: key, Type: isLocal(dataType), Value: value, IsHashed: isHashed}
 	_, err := c.rpcClient.Put(ctx, req)
 	return err
 }
 
 // Del removes the key-value pair from kv store
-func (c *EdgekvClient) Del(key string, dataType string) error {
+func (c *EdgekvClient) Del(key string, dataType string, isHashed bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.rpcTimeout)
 	defer cancel()
-	req := &pb.DeleteRequest{Key: key, Type: isLocal(dataType)}
+	req := &pb.DeleteRequest{Key: key, Type: isLocal(dataType), IsHashed: isHashed}
 	res, err := c.rpcClient.Del(ctx, req)
 	st := res.GetStatus()
 	returnErr := err

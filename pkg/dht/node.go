@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,7 @@ type Node struct {
 	leaving    bool // set true when node is leaving the ring
 	state      int
 	stateMut   sync.RWMutex
+	leavingMut sync.RWMutex
 }
 
 // newBasicNode creates a node with the essential parameters
@@ -312,28 +314,27 @@ func (n *Node) SetSuccessor(succ *Node) {
 // stabilize periodically checks if the successor is up-to-date and notifies them
 // that this node should be their predecessor
 func (n *Node) stabilize() {
-	succ := n.Successor()
-	var newSucc *Node
-	var err error
-	if n == succ {
+	var succ, newSucc *Node
+	if n == n.Successor() {
 		<-n.nodeJoinCh // if only node, wait until other nodes join
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:
+			succ = n.Successor()
 			if n == succ {
 				newSucc = succ.Predecessor()
 			} else {
-				leaving, er := succ.IsLeavingRPC()
-				if er != nil {
-					log.Fatalf("Failed to run the stabilizer algorithm %v", er)
+				leaving, err := succ.IsLeavingRPC()
+				if err != nil {
+					log.Fatalf("stabilizer: couldnt get isLeaving state of successor at node %s: %v", n.idFmt(), err)
 				}
 				if leaving {
 					// if successor is leaving, use their successor
 					newSucc, err = succ.GetSuccessorRPC()
 					if err != nil {
-						log.Fatalf("Failed to run the stabilizer algorithm %v", err)
+						log.Fatalf("stabilizer: couldnt get successor of leaving successor at node %s: %v", n.idFmt(), err)
 					}
 					n.SetSuccessor(newSucc)
 					// we don't notify new successor here, they will realize us on their own
@@ -341,7 +342,7 @@ func (n *Node) stabilize() {
 				}
 				newSucc, err = succ.GetPredecessorRPC()
 				if err != nil {
-					log.Fatalf("Failed to run the stabilizer algorithm %v", err)
+					log.Fatalf("stabilizer: couldnt get predecessor of successor at node %s: %v", n.idFmt(), err)
 				}
 			}
 			if newSucc.ID != succ.ID {
@@ -354,8 +355,6 @@ func (n *Node) stabilize() {
 			}
 			succ = n.Successor()                                // get the possibly updated successor
 			if (n.getState() == Joined) && (n.storage != nil) { // get keys n is responsible for
-				// TODO: should i copy all the keys before notifying successor to make sure no keys are deleted from them
-				// or should i do it in another goroutine to make dht be stable more quickly?
 				// we copy keys in same thread to avoid notifying succ before we get all the keys
 				if err := n.loadFirstSnapshot(); err != nil {
 					log.Fatalf("Failed to get first snapshot: %v", err)
@@ -452,9 +451,12 @@ func (n *Node) loadFirstSnapshot() error {
 		return fmt.Errorf("could not get predecessor of node %s via RPC: %v", succ.idFmt(), err)
 	}
 	if succPred.ID == n.ID {
+		// log.Printf("Node ID == Successor's predecessor ID == %s\n", n.ID)
+		// log.Printf("Getting all keys from succ %s in range (%s, %s)\n", succ.ID, succ.ID, n.ID)
 		err = n.rangeGetAndPutKV(succ, incID(succ.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars)) // (succ, n]
 
 	} else {
+		// log.Printf("Getting all keys from succ %s in range (%s, %s)\n", succ.ID, succPred.ID, n.ID)
 		err = n.rangeGetAndPutKV(succ, incID(succPred.ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars)) // (succPred, n]
 	}
 	if err != nil {
@@ -476,7 +478,7 @@ func (n *Node) rangeGetAndPutKV(remote *Node, start string, end string) error {
 			remote.idFmt(), err)
 	}
 	if (kvs == nil) || (len(kvs) == 0) {
-		log.Printf("No keys found at node %s, so will start with an empty keyset!\n", remote.idFmt())
+		// log.Printf("No keys found at node %s, so will start with an empty keyset!\n", remote.idFmt())
 	}
 	if err = n.multiPutKV(kvs); err != nil {
 		return fmt.Errorf("failed to add keys to node %s: %v", n.idFmt(), err)
@@ -544,7 +546,7 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 	for i := len(n.ft) - 1; i >= 0; i-- {
 		fingerNode := n.ft[i].node
 		if fingerNode == nil {
-			fmt.Printf("FT[%d] with start=%s is not set\n", i, n.ft[i].start)
+			log.Fatalf("FT[%d] with start=%s is not set\n", i, n.ft[i].start)
 		}
 		if inInterval(fingerNode.ID, incID(n.ID, n.Conf.IDChars), ID) {
 			return fingerNode
@@ -556,10 +558,14 @@ func (n *Node) closestPrecedingFinger(ID string) *Node {
 // CanStore returns true if the key is the responisibility of this node and false otherwise
 func (n *Node) CanStore(key string) bool {
 	// keys is in (pred, n]
-	if (n.Successor() == n) || (n.Predecessor() == n) { // only node in ring || new node
+	if (n.Successor().ID == n.ID) || (n.Predecessor().ID == n.ID) { // only node in ring || new node
+		// log.Printf("canstore key %s because node is new", key)
 		return true
 	}
-	return inInterval(key, incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
+	ans := inInterval(key, incID(n.Predecessor().ID, n.Conf.IDChars), incID(n.ID, n.Conf.IDChars))
+	// log.Printf("canstore key %s: %t because key is in range (%s, %s)", key, ans, n.Predecessor().ID, n.ID)
+	return ans
+
 }
 
 // GetFTID returns the ID with ft entry with index idx
@@ -578,10 +584,11 @@ func (n *Node) multiPutKV(kvs map[string]string) error {
 }
 
 // Leave the DHT ring and stop the node
+// This method waits for a long time, so it is recommended to call it in another goroutine
 func (n *Node) Leave() error {
 	n.setLeaving()
 	close(n.shutdownCh)          // stop stabilize and fixFinger goroutines
-	time.Sleep(20 * time.Second) // give enough time for other nodes to stabilize
+	time.Sleep(70 * time.Second) // give enough time for other nodes to stabilize
 	return n.shutDown()
 	// TODO: any other tasks?
 }
@@ -600,11 +607,15 @@ func (n *Node) shutDown() error {
 }
 
 func (n *Node) isLeaving() bool {
+	n.leavingMut.RLock()
+	defer n.leavingMut.RUnlock()
 	return n.leaving
 }
 
 func (n *Node) setLeaving() {
+	n.leavingMut.Lock()
 	n.leaving = true
+	n.leavingMut.Unlock()
 }
 
 // PrintFT prints the finger table of node n
@@ -616,12 +627,12 @@ func (n *Node) PrintFT() {
 
 // ZeroID return the Zero ID in the ring
 func (n *Node) ZeroID() string {
-	return appendZeros("0", n.Conf.IDChars)
+	return strings.Repeat("0", n.Conf.IDChars)
 }
 
 // MaxID return the maximum possible ID in the ring
 func (n *Node) MaxID() string {
-	return appendZeros("f", n.Conf.IDChars)
+	return strings.Repeat("f", n.Conf.IDChars) // in hex
 }
 
 // GetState returns the state of the node: created, joined, or ready

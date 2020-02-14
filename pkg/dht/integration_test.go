@@ -1,7 +1,6 @@
 package dht
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
@@ -37,9 +36,9 @@ func TestFingerTables(t *testing.T) {
 	ft[4] = []string{"001", "001", "001", "001", "001"}
 	for i, f := range ft {
 		n := m[i]
-		fmt.Printf("Node %d\n with Addr %s, ID: %s\n", i, n.Addr, n.ID)
+		// fmt.Printf("Node %d\n with Addr %s, ID: %s\n", i, n.Addr, n.ID)
 		n.PrintFT()
-		fmt.Printf("Successor: %s, Predecessor: %s\n", n.Successor().ID, n.Predecessor().ID)
+		// fmt.Printf("Successor: %s, Predecessor: %s\n", n.Successor().ID, n.Predecessor().ID)
 		for j, fte := range f {
 			res := n.GetFTID(j)
 			want := fte

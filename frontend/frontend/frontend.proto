@@ -24,6 +24,7 @@ service Frontend {
 message GetRequest {
     string key = 1;
     bool type = 2;
+    bool is_hashed = 3;
 }
 
 message GetResponse {
@@ -35,6 +36,7 @@ message PutRequest {
     string key = 1;
     string value = 2;
     bool type = 3;
+    bool is_hashed = 4;
 }
 
 message PutResponse {
@@ -44,6 +46,7 @@ message PutResponse {
 message DeleteRequest {
     string key = 1;
     bool type = 2;
+    bool is_hashed = 3;
 }
 
 message DeleteResponse {

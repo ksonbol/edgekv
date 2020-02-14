@@ -79,15 +79,6 @@ func (s *Server) GetPredecessor(ctx context.Context, req *pb.EmptyReq) (*pb.Node
 
 // FindSuccessor returns predecessor of this node
 func (s *Server) FindSuccessor(ctx context.Context, req *pb.ID) (*pb.Node, error) {
-	// todo get peer info from context (we need requester node ID)
-	// todo send requester node ID in context?
-	// senderID := (ctx.Value("senderId")).string
-	// senderAddr := ctx.Value("senderAddr")
-	// if s.node.Successor().ID == s.node.ID {
-	// 	n := NewRemoteNode(senderAddr, senderID, s.node.Transport)
-	// 	s.node.SetSuccessor(n)
-	// }
-	// peer, ok := peer.FromContext(ctx)
 	succ, err := s.node.findSuccessor(req.GetId())
 	if err != nil {
 		return nil, err

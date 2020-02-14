@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -85,12 +84,8 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 	var returnRes *pb.GetResponse
 	var res *clientv3.GetResponse
 	var val string
-	sender, ok := peer.FromContext(ctx)
-	if !ok {
-		log.Fatal("Couldn't get requester info to the edge node")
-	}
-	senderAddr := sender.Addr.String()
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	key := req.GetKey()
 	switch req.GetType() {
 	case utils.LocalData:
@@ -98,6 +93,7 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 		// log.Println("All local keys in this edge group")
 		// log.Println(s.localSt.Get(ctx, "", clientv3.WithPrefix()))
 	case utils.GlobalData:
+		isHashed := req.GetIsHashed()
 		if s.gateway == nil {
 			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
 		}
@@ -110,21 +106,17 @@ func (s *FrontendServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 		}
 		// log.Println("All global keys in this edge group")
 		// log.Println(s.globalSt.Get(ctx, "", clientv3.WithPrefix()))
-		hashedKey := s.gateway.Conf.IDFunc(key)
-		// if request is coming from the gateway node, we don't ask it again if key
-		// is our responsiblity
-		if senderAddr == s.gateway.Addr {
-			res, err = s.globalSt.Get(ctx, hashedKey)
+		if !isHashed {
+			key = s.gateway.Conf.IDFunc(key)
+		}
+		ans, er := s.gateway.CanStoreRPC(key)
+		if er != nil {
+			log.Fatalf("Get request failed: communication with gateway node failed")
+		}
+		if ans {
+			res, err = s.globalSt.Get(ctx, key)
 		} else {
-			ans, er := s.gateway.CanStoreRPC(hashedKey)
-			if er != nil {
-				log.Fatalf("Get request failed: communication with gateway node failed")
-			}
-			if ans {
-				res, err = s.globalSt.Get(ctx, hashedKey)
-			} else {
-				val, err = s.gateway.GetKVRPC(hashedKey)
-			}
+			val, err = s.gateway.GetKVRPC(key)
 		}
 	}
 	// cancel()
@@ -153,19 +145,15 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 	var returnErr error = nil
 	var err error
 	var returnRes *pb.PutResponse
-	sender, ok := peer.FromContext(ctx)
-	if !ok {
-		log.Fatal("Couldn't get requester info to the edge node")
-	}
-	senderAddr := sender.Addr.String()
 	key := req.GetKey()
 	// var res *clientv3.PutResponse
-	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	switch req.GetType() {
 	case utils.LocalData:
 		_, err = s.localSt.Put(ctx, key, req.GetValue())
 	case utils.GlobalData:
+		isHashed := req.GetIsHashed()
 		if s.gateway == nil {
 			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
 		}
@@ -176,27 +164,19 @@ func (s *FrontendServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 		if state < dht.Joined { // in order to reach ready state, a node may need to put some keys initially
 			return returnRes, fmt.Errorf("edge node %s not connected to dht yet", s.print())
 		}
-		hashedKey := s.gateway.Conf.IDFunc(key)
-		if senderAddr == s.gateway.Addr {
-			log.Println("Put request coming directly from gateway node")
-			// TODO: does this ever work??? when gateway sends a request, it still uses a client
-			// so which address is used?
-			// probably this is the problem, since the node does not know its pred. yet, canstore fails
-			// so it sends the request again in an rpc (infinite one?)
-			// log.Printf("Node %s:%d Directly writing key %s to edge group", s.hostname, s.port, hashedKey)
-			_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
+		if !isHashed {
+			key = s.gateway.Conf.IDFunc(key)
+		}
+		ans, err := s.gateway.CanStoreRPC(key)
+		if err != nil {
+			log.Fatalf("communication with gateway node failed: %v\n", err)
+		}
+		if ans {
+			// log.Printf("Node %s:%d Writing key %s to local edge group", s.hostname, s.port, key)
+			_, err = s.globalSt.Put(ctx, key, req.GetValue())
 		} else {
-			ans, err := s.gateway.CanStoreRPC(hashedKey)
-			if err != nil {
-				log.Fatalf("communication with gateway node failed: %v\n", err)
-			}
-			if ans {
-				// log.Printf("Node %s:%d Writing key %s to local edge group", s.hostname, s.port, hashedKey)
-				_, err = s.globalSt.Put(ctx, hashedKey, req.GetValue())
-			} else {
-				// log.Printf("Node %s:%d Writing key %s to remote edge group", s.hostname, s.port, hashedKey)
-				err = s.gateway.PutKVRPC(hashedKey, req.GetValue())
-			}
+			// log.Printf("Node %s:%d Writing key %s to remote edge group", s.hostname, s.port, key)
+			err = s.gateway.PutKVRPC(key, req.GetValue())
 		}
 	}
 	// cancel()
@@ -213,19 +193,16 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 	var err error
 	var returnRes *pb.DeleteResponse
 	// var res *clientv3.DeleteResponse
-	sender, ok := peer.FromContext(ctx)
-	if !ok {
-		log.Fatal("Couldn't get requester info to the edge node")
-	}
-	senderAddr := sender.Addr.String()
 	key := req.GetKey()
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	switch req.GetType() {
 	case utils.LocalData:
 		_, err = s.localSt.Delete(ctx, key)
 	case utils.GlobalData:
+		isHashed := req.GetIsHashed()
 		if s.gateway == nil {
-			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
+			return returnRes, fmt.Errorf("Del request failed: gateway node not initialized at the edge")
 		}
 		state, err := s.gateway.GetStateRPC()
 		if err != nil {
@@ -234,19 +211,17 @@ func (s *FrontendServer) Del(ctx context.Context, req *pb.DeleteRequest) (*pb.De
 		if state < dht.Ready { // could happen if gateway node was created but didnt join dht
 			return returnRes, fmt.Errorf("edge node %s not connected to dht yet or gateway node not ready", s.print())
 		}
-		hashedKey := s.gateway.Conf.IDFunc(key)
-		if senderAddr == s.gateway.Addr {
-			_, err = s.globalSt.Delete(ctx, hashedKey)
+		if !isHashed {
+			key = s.gateway.Conf.IDFunc(key)
+		}
+		ans, er := s.gateway.CanStoreRPC(key)
+		if er != nil {
+			log.Fatalf("Delete request failed: communication with gateway node failed")
+		}
+		if ans {
+			_, err = s.globalSt.Delete(ctx, key)
 		} else {
-			ans, er := s.gateway.CanStoreRPC(hashedKey)
-			if er != nil {
-				log.Fatalf("Delete request failed: communication with gateway node failed")
-			}
-			if ans {
-				_, err = s.globalSt.Delete(ctx, hashedKey)
-			} else {
-				err = s.gateway.DelKVRPC(hashedKey)
-			}
+			err = s.gateway.DelKVRPC(key)
 		}
 	}
 	// cancel() // as given in etcd docs, wouldnt do harm anyway
@@ -289,7 +264,7 @@ func (s *FrontendServer) RangeGet(req *pb.RangeRequest, stream pb.Frontend_Range
 		}
 		res, err = s.localSt.Get(ctx, startKey, clientv3.WithRange(endKey)) // get the key itself, no hashes used
 	case utils.GlobalData:
-		// keys are already hashed
+		// keys are assumed to be already hashed
 		if s.gateway == nil {
 			return fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
 		}
@@ -310,11 +285,15 @@ func (s *FrontendServer) RangeGet(req *pb.RangeRequest, stream pb.Frontend_Range
 			if returnErr = checkError(err); returnErr != nil {
 				return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
 			}
+			// log.Printf("First res length %d", res.Count)
 			res2, err = s.globalSt.Get(ctx, end1)
 			if returnErr = checkError(err); returnErr != nil {
 				return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
 			}
+			// log.Printf("Second res length %d", res2.Count)
+
 			res3, err = s.globalSt.Get(ctx, start2, clientv3.WithRange(endKey))
+			// log.Printf("Third res length %d", res3.Count)
 		} else {
 			res, err = s.globalSt.Get(ctx, startKey, clientv3.WithRange(endKey))
 		}
@@ -323,9 +302,9 @@ func (s *FrontendServer) RangeGet(req *pb.RangeRequest, stream pb.Frontend_Range
 	if returnErr != nil {
 		return status.Errorf(codes.Unknown, "Range Get failed with error: %v", returnErr)
 	}
-	if (res == nil) || (res.Count == 0) { // should be same as if len(res.Kvs) == 0
-		return nil
-	}
+	// if (res == nil) || (res.Count == 0) { // should be same as if len(res.Kvs) == 0
+	// 	return nil
+	// }
 	for _, kv := range res.Kvs {
 		kvRes = &pb.KV{Key: string(kv.Key), Value: string(kv.Value)}
 		stream.Send(kvRes)
@@ -367,7 +346,7 @@ func (s *FrontendServer) RangeDel(ctx context.Context, req *pb.RangeRequest) (*p
 		_, err = s.localSt.Delete(ctx, startKey, clientv3.WithRange(endKey)) // use the key itself, no hashes used
 		return returnRes, err
 	case utils.GlobalData:
-		// keys are already hashed
+		// keys are assumed to be already hashed
 		if s.gateway == nil {
 			return returnRes, fmt.Errorf("RangeGet request failed: gateway node not initialized at the edge")
 		}

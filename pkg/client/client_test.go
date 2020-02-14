@@ -51,7 +51,7 @@ func setupTest(t *testing.T) (*gomock.Controller, *frmock.MockFrontendClient, *t
 // func TestGet(t *testing.T) {
 // 	mockCtrl, client, data := setupTest(t)
 // 	defer mockCtrl.Finish()
-// 	req := &pb.GetRequest{Key: data.testKey, Type: data.dataType}
+// 	req := &pb.GetRequest{Key: data.testKey, Type: data.dataType, IsHashed: false}
 // 	client.EXPECT().Get(
 // 		gomock.Any(), // expect any value for first parameter
 // 		&rpcMsg{msg: req},
@@ -68,7 +68,7 @@ func setupTest(t *testing.T) (*gomock.Controller, *frmock.MockFrontendClient, *t
 // func TestPut(t *testing.T) {
 // 	mockCtrl, client, data := setupTest(t)
 // 	defer mockCtrl.Finish()
-// 	req := &pb.PutRequest{Key: data.testKey, Type: data.dataType, Value: data.testValue}
+// 	req := &pb.PutRequest{Key: data.testKey, Type: data.dataType, Value: data.testValue, IsHashed: false}
 // 	client.EXPECT().Put(
 // 		gomock.Any(), // expect any value for first parameter
 // 		&rpcMsg{msg: req},
@@ -84,7 +84,7 @@ func setupTest(t *testing.T) (*gomock.Controller, *frmock.MockFrontendClient, *t
 // func TestDel(t *testing.T) {
 // 	mockCtrl, client, data := setupTest(t)
 // 	defer mockCtrl.Finish()
-// 	req := &pb.DeleteRequest{Key: data.testKey, Type: data.dataType}
+// 	req := &pb.DeleteRequest{Key: data.testKey, Type: data.dataType, IsHashed: false}
 // 	client.EXPECT().Del(
 // 		gomock.Any(), // expect any value for first parameter
 // 		&rpcMsg{msg: req},

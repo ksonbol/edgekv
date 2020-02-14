@@ -18,17 +18,17 @@ func NewStorage(cl *client.EdgekvClient) *EdgeKVStorage {
 
 // GetKV gets KV from the connected edge group
 func (s *EdgeKVStorage) GetKV(key string) (string, error) {
-	return s.cl.Get(key, utils.GlobalDataStr)
+	return s.cl.Get(key, utils.GlobalDataStr, true)
 }
 
 // PutKV puts the KV to the connected edge group
 func (s *EdgeKVStorage) PutKV(key, value string) error {
-	return s.cl.Put(key, utils.GlobalDataStr, value)
+	return s.cl.Put(key, utils.GlobalDataStr, value, true)
 }
 
 // DelKV removes the KV from the connected edge group
 func (s *EdgeKVStorage) DelKV(key string) error {
-	return s.cl.Del(key, utils.GlobalDataStr)
+	return s.cl.Del(key, utils.GlobalDataStr, true)
 }
 
 // RangeGetKV gets the KV pairs from the connected edge group
