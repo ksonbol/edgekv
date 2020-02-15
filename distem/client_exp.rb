@@ -1,15 +1,17 @@
 require 'distem'
 require_relative 'conf'
 
-edge_port = 2381
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
-EDGEKV_PARENT_DIR = '/root/go/src/github.com/ksonbol' 
-CLI_FILE = 'bin/client'
 
+# this assumes we need one client per edge group
+idx = 0
 Distem.client do |cl|
-    # TODO: should we give the client addresses of all nodes in the cluster or just one?
-    edge_addr = cl.viface_info(SERVER_VNODES[0],'if0')['address'].split('/')[0]
-    CLIENT_VNODES.each_with_index do |node, idx|
+    for i in 1..NUM_GROUPS
+        # TODO: should we give the client addresses of all nodes in the cluster or just one?
+        edge_node = SERVER_VNODES[idx]
+        idx += NUM_SRVR_PER_GROUP
+        edge_addr = cl.viface_info(edge_node,'if0')['address'].split('/')[0]
+        node = CLIENT_VNODES[i]
         addr = cl.viface_info(node,'if0')['address'].split('/')[0]
         cl.vnode_execute(node, "mkdir -p #{EDGEKV_PARENT_DIR}")
         system("scp -r -i #{SSH_KEY_PATH} edgekv/ root@#{addr}:#{EDGEKV_PARENT_DIR}")  # copy client files

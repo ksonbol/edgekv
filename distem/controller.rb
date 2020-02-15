@@ -193,18 +193,18 @@ system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "clients are running"
   end
-
+  
+  puts "Starting gateway nodes"
+  out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
+  if $?.exitstatus == 0
+    puts "gateway nodes are running"
+  end
+  
   puts "Copying ycsb files"
   system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "YCSB files copied"
   end
-
-  # puts "Starting gateway nodes"
-  # out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
-  # if $?.exitstatus == 0
-  #   puts "gateway nodes are running"
-  # end
 end
 
 # def ssh_run(remote, cmd, desc="command")
