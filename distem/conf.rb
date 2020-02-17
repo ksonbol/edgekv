@@ -35,6 +35,7 @@ EDGE_PORT = 2385
 GATEWAY_PORT = 5554
 
 EDGEKV_PARENT_DIR = '/root/go/src/github.com/ksonbol' 
+YCSB_PARENT_DIR = '/root/go/src/github.com/ksonbol'
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
 EDGE_FILE = 'bin/edge'
 GATEWAY_FILE = "bin/gateway"

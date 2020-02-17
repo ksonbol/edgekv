@@ -1,9 +1,6 @@
 require 'distem'
 require_relative 'conf'
 
-SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
-YCSB_PARENT_DIR = '/root/go/src/github.com/ksonbol'
-
 # TODO: make this work for each client node
 Distem.client do |cl|
     CLIENT_VNODES.each_with_index do |node, idx|
