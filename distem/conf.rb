@@ -25,14 +25,14 @@ VNODE_LIST = SERVER_VNODES + GATEWAY_VNODES + CLIENT_VNODES
 
 SETUP = "cloud"
 
-etcd_local_client_port = 2379
-etcd_global_client_port = 2381
-etcd_local_peer_port = 2380
-etcd_global_peer_port = 2382
+ETCD_LOCAL_CLIENT_PORT = 2379
+ETCD_GLOBAL_CLIENT_PORT = 2381
+ETCD_LOCAL_PEER_PORT = 2380
+ETCD_GLOBAL_PEER_PORT = 2382
 
-edge_port = 2381
+EDGE_PORT = 2385
 
-gateway_port = 5554
+GATEWAY_PORT = 5554
 
 EDGEKV_PARENT_DIR = '/root/go/src/github.com/ksonbol' 
 SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'

@@ -30,7 +30,6 @@ subnet_addr = "#{subnet.address}/#{subnet.prefix}"
 pnodes = job['assigned_nodes']
 pnodes.map!{|n| n.split(".")[0]}  # remove the ".SITE_NAME.grid5000.fr" suffix
 # raise 'This experiment requires at least two physical machines' unless pnodes.size >= 2
-coordinator = pnodes.first
 
 # This ruby hash table describes our virtual network
 vnet = {
@@ -97,15 +96,15 @@ Distem.client do |dis|
     dis.vnode_start(nodename)
   end
 
-  sleep(5)
-  if dis.wait_vnodes({'timeout' => 60}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
-    puts "vnodes started successfully"
-  else
-    puts "vnodes are unreachable, maybe wait a little more?"
-    exit 1
-  end
-
-  # allow internet access for all nodes
+#   sleep(5)
+#   if dis.wait_vnodes({'timeout' => 60}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
+#     puts "vnodes started successfully"
+#   else
+#     puts "vnodes are unreachable, maybe wait a little more?"
+#     exit 1
+#   end
+  # sleep(5)
+#   # allow internet access for all nodes
   VNODE_LIST.each_with_index do |node, idx|
     addr = dis.viface_info(node,'if0')['address'].split('/')[0]
     dis.vnode_execute(node, "ifconfig if0 #{addr} netmask 255.252.0.0;route add default gw 10.147.255.254 dev if0")

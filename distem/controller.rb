@@ -35,9 +35,8 @@ end.parse!
 NUM_NODES = NUM_VNODES
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
-CLUSTER_NAME = 'grimoire'
-WALL_TIME = '05:30:00'
-SSH_KEY_PATH = '/home/ksonbol/.ssh/id_rsa'
+CLUSTER_NAME = 'grisou'
+WALL_TIME = '07:15:00'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
 SETUP_FILE = 'setup.rb'
@@ -109,9 +108,11 @@ if options[:setup]
     # end
   end
 
-  puts "Preparing node file"
-
+  
   nodes = job['assigned_nodes']
+  coordinator = nodes.first
+  
+  puts "Preparing node file"
   NODEFILE = File.join(NODEFILES_DIR, job['uid'].to_s)
   open(NODEFILE, 'w') { |f|
     nodes.each do |node|
@@ -126,8 +127,6 @@ if options[:setup]
   
   system("bash -c 'distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
 
-  coordinator = nodes.first
-
   puts "installing ruby-cute gem on coordinator node for g5k communication"
   # since this is stored in our fs image, we probably dont need to run this any more
  system("ssh root@#{coordinator} 'gem install ruby-cute'")
@@ -135,14 +134,14 @@ if options[:setup]
     puts "gem installed successfully"
   end
 
-#   # set up the virtual network
-  puts "Setting up the virtual network"
+  puts "Copying the setup file"
   system("scp #{SETUP_FILE} root@#{coordinator}:/root")
   system("scp #{CONF_FILE} root@#{coordinator}:/root")
-    if $?.exitstatus == 0
-      puts "copied setup file"
-    end
-  
+  if $?.exitstatus == 0
+    puts "copied setup file"
+  end
+
+  puts "Setting up the virtual network"
   system("ssh root@#{coordinator} 'ruby #{SETUP_FILE}'")
   if $?.exitstatus == 0
     puts "virtual network set up successfully"
@@ -158,14 +157,15 @@ end
 
 if options[:play]
   puts "copying experiment files to coordinator node"
-  out = %x(scp #{SRVR_EXP_FILE} root@#{coordinator}:/root)
-  out = %x(scp #{EDGE_EXP_FILE} root@#{coordinator}:/root)
-  out = %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
-  out = %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
-  out = %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
-  out = %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
-  out = %x(scp -r go-ycsb/ root@#{coordinator}:/root)
-  out = %x(scp edgekv.conf root@#{coordinator}:/root)
+  %x(scp #{CONF_FILE} root@#{coordinator}:/root)
+  %x(scp #{SRVR_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{EDGE_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
+  %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
+  %x(scp -r go-ycsb/ root@#{coordinator}:/root)
+  %x(scp edgekv.conf root@#{coordinator}:/root)
 
   # out = %x(scp -r edge/ root@#{coordinator}:/root)
   # out = %x(scp -r client/ root@#{coordinator}:/root)
@@ -187,24 +187,25 @@ system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "edge servers are running"
   end
+    
+  puts "Starting gateway nodes"
+  out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
+  if $?.exitstatus == 0
+    puts "gateway nodes are running"
+  end
 
   puts "Starting clients"
   system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "clients are running"
   end
-  
-  puts "Starting gateway nodes"
-  out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
-  if $?.exitstatus == 0
-    puts "gateway nodes are running"
-  end
-  
+
   puts "Copying ycsb files"
   system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
   if $?.exitstatus == 0
     puts "YCSB files copied"
   end
+
 end
 
 # def ssh_run(remote, cmd, desc="command")

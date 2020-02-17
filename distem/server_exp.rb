@@ -48,15 +48,15 @@ Distem.client do |dis|
         initial_cluster_global = "" # needed for etcd peers (servers)
         # get node IPs and prepare initial cluster conf
         for j in 1..NUM_SRVR_PER_GROUP
-            node = SERVER_VNODES[idx]
-            nodes.push(node)
+            n = SERVER_VNODES[idx]
+            nodes[j-1] = n
             idx += 1
-            addr = dis.viface_info(node,'if0')['address'].split('/')[0]
-            serv_node_ips.push(addr)
-            initial_cluster_local += "#{node}-local=http://#{addr}:#{etcd_local_peer_port},"
-            initial_cluster_global += "#{node}-global=http://#{addr}:#{etcd_global_peer_port},"
+            addr = dis.viface_info(n,'if0')['address'].split('/')[0]
+            serv_node_ips[j-1] = addr
+            initial_cluster_local += "#{n}-local=http://#{addr}:#{ETCD_LOCAL_PEER_PORT},"
+            initial_cluster_global += "#{n}-global=http://#{addr}:#{ETCD_GLOBAL_PEER_PORT},"
             # if this is already in the fs, no need to export ETCDCTL_API=3
-            dis.vnode_execute(node, "pkill etcd")  # kill any previous instances of etcd
+            dis.vnode_execute(n, "pkill etcd")  # kill any previous instances of etcd
         end
         initial_cluster_local = initial_cluster_local[0..-2]  # remove the last comma
         initial_cluster_global = initial_cluster_global[0..-2]  # remove the last comma
@@ -69,10 +69,10 @@ Distem.client do |dis|
             # local etcd instance
             cmd =  "cd /root;nohup /usr/local/bin/etcd --heartbeat-interval=#{hb_interval} \
             --election-timeout=#{elec_timeout} \
-            --name #{node}-local --initial-advertise-peer-urls http://#{addr}:#{etcd_local_peer_port} \
-            --listen-peer-urls http://#{addr}:#{etcd_local_peer_port} \
-            --listen-client-urls http://#{addr}:#{etcd_local_client_port},http://127.0.0.1:#{etcd_local_client_port} \
-            --advertise-client-urls http://#{addr}:#{etcd_local_client_port} \
+            --name #{node}-local --initial-advertise-peer-urls http://#{addr}:#{ETCD_LOCAL_PEER_PORT} \
+            --listen-peer-urls http://#{addr}:#{ETCD_LOCAL_PEER_PORT} \
+            --listen-client-urls http://#{addr}:#{ETCD_LOCAL_CLIENT_PORT},http://127.0.0.1:#{ETCD_LOCAL_CLIENT_PORT} \
+            --advertise-client-urls http://#{addr}:#{ETCD_LOCAL_CLIENT_PORT} \
             --initial-cluster-token #{local_cluster_token}-#{i} \
             --initial-cluster #{initial_cluster_local} \
             --initial-cluster-state new > /root/etcdlog/etcd_local.log 2>&1 &"
@@ -85,10 +85,10 @@ Distem.client do |dis|
             # global etcd instance
             cmd =  "cd /root;nohup /usr/local/bin/etcd --heartbeat-interval=#{hb_interval} \
             --election-timeout=#{elec_timeout} \
-            --name #{node}-global --initial-advertise-peer-urls http://#{addr}:#{etcd_global_peer_port} \
-            --listen-peer-urls http://#{addr}:#{etcd_global_peer_port} \
-            --listen-client-urls http://#{addr}:#{etcd_global_client_port},http://127.0.0.1:#{etcd_global_client_port} \
-            --advertise-client-urls http://#{addr}:#{etcd_global_client_port} \
+            --name #{node}-global --initial-advertise-peer-urls http://#{addr}:#{ETCD_GLOBAL_PEER_PORT} \
+            --listen-peer-urls http://#{addr}:#{ETCD_GLOBAL_PEER_PORT} \
+            --listen-client-urls http://#{addr}:#{ETCD_GLOBAL_CLIENT_PORT},http://127.0.0.1:#{ETCD_GLOBAL_CLIENT_PORT} \
+            --advertise-client-urls http://#{addr}:#{ETCD_GLOBAL_CLIENT_PORT} \
             --initial-cluster-token #{global_cluster_token}-#{i} \
             --initial-cluster #{initial_cluster_global} \
             --initial-cluster-state new > /root/etcdlog/etcd_global.log 2>&1 &"
@@ -99,18 +99,18 @@ Distem.client do |dis|
             # puts "etcd server #{idx+1} running"
         end
         sleep(7)
-        dis.vnode_execute(nodes[0], "etcdctl --endpoints=#{serv_node_ips[0]}:#{etcd_local_client_port} put mykey local")
-        dis.vnode_execute(nodes[0], "etcdctl --endpoints=#{serv_node_ips[0]}:#{etcd_global_client_port} put mykey global")
+        dis.vnode_execute(nodes[0], "etcdctl --endpoints=#{serv_node_ips[0]}:#{ETCD_LOCAL_CLIENT_PORT} put mykey local")
+        dis.vnode_execute(nodes[0], "etcdctl --endpoints=#{serv_node_ips[0]}:#{ETCD_GLOBAL_CLIENT_PORT} put mykey global")
         sleep(3)
-        out = dis.vnode_execute(nodes[1], "etcdctl --endpoints=#{serv_node_ips[1]}:#{etcd_local_client_port} get mykey")
-        out2 = dis.vnode_execute(nodes[1], "etcdctl --endpoints=#{serv_node_ips[1]}:#{etcd_global_client_port} get mykey")
+        out = dis.vnode_execute(nodes[1], "etcdctl --endpoints=#{serv_node_ips[1]}:#{ETCD_LOCAL_CLIENT_PORT} get mykey")
+        out2 = dis.vnode_execute(nodes[1], "etcdctl --endpoints=#{serv_node_ips[1]}:#{ETCD_GLOBAL_CLIENT_PORT} get mykey")
         if out.length>=2 && out[1] == "local" && out2.length >= 2 && out2[1] == "global"
             puts "etcd cluster-#{i} is working correctly"
         else
             puts "etcd cluster-#{i} not setup correctly: '#{out} #{out2}'"
         end
-        dis.vnode_execute(nodes[2], "etcdctl --endpoints=#{nodes[2]}:#{etcd_local_client_port} del mykey")
-        dis.vnode_execute(nodes[2], "etcdctl --endpoints=#{nodes[2]}:#{etcd_global_client_port} del mykey")
+        dis.vnode_execute(nodes[2], "etcdctl --endpoints=#{nodes[2]}:#{ETCD_LOCAL_CLIENT_PORT} del mykey")
+        dis.vnode_execute(nodes[2], "etcdctl --endpoints=#{nodes[2]}:#{ETCD_GLOBAL_CLIENT_PORT} del mykey")
     end
 end
 # puts "all etcd servers are now running!"
