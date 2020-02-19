@@ -24,18 +24,17 @@ if jobs.length() > 1
 end
 
 job = jobs.first
-subnet = g5k.get_subnets(job).first
-subnet_addr = "#{subnet.address}/#{subnet.prefix}"
+subnets = g5k.get_subnets(job)
+subnet_addr = []
+subnets.each do |subnet|
+  subnet_addr << "#{subnet.address}/#{subnet.prefix}"
+end
+
+raise "Not enough subnets!" if subnets.length < NUM_VNETS
 
 pnodes = job['assigned_nodes']
 pnodes.map!{|n| n.split(".")[0]}  # remove the ".SITE_NAME.grid5000.fr" suffix
 # raise 'This experiment requires at least two physical machines' unless pnodes.size >= 2
-
-# This ruby hash table describes our virtual network
-vnet = {
-  'name' => 'edgekvnet',
-  'address' => subnet_addr
-}
 
 # running on coordinator node
 private_key = IO.readlines('/root/.ssh/id_rsa').join
@@ -48,9 +47,17 @@ sshkeys = {
 
 # Connect to the Distem server (on http://localhost:4567 by default)
 Distem.client do |dis|
-  puts 'Creating virtual network'
+  puts 'Creating virtual networks'
   # Start by creating the virtual network
-  dis.vnetwork_create(vnet['name'], vnet['address'])
+  sub_idx = 0
+  (1..NUM_GROUPS).each do |i|
+    dis.vnetwork_create("cli-#{i}", subnet_addr[sub_idx])
+    dis.vnetwork_create("edge-#{i}", subnet_addr[sub_idx+1])
+    dis.vnetwork_create("gw-#{i}", subnet_addr[sub_idx+2])
+    sub_idx += 3
+  end
+  dis.vnetwork_create("gw-gw", subnet_addr[sub_idx])
+
   puts 'Creating virtual nodes'
   
   # vnode_idx = 0
@@ -80,12 +87,34 @@ Distem.client do |dis|
 
   # # Creating one virtual node per physical one
   pnode_idx = 0
-  VNODE_LIST.each_with_index do |node_name, idx|
+  group_idx = 1
+  SERVER_VNODES.each_with_index do |node_name, idx|
     dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
-    # dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx], 'vfilesystem' => \
-    #   {'image' => FSIMG, 'path' => '/mnt/edgekv-1/etcd-1'}}, sshkeys)
+    #   dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx], 'vfilesystem' => \
+    # {'image' => FSIMG, 'path' => '/mnt/edgekv-1/etcd-1'}}, sshkeys)
     dis.vfilesystem_create(node_name, { 'image' => FSIMG })
-    dis.viface_create(node_name, 'if0', { 'vnetwork' => vnet['name'] })
+    dis.viface_create(node_name, 'if0', {'vnetwork' => "cli-#{group_idx}"})
+    dis.viface_create(node_name, 'if1', {'vnetwork' => "edge-#{group_idx}"})
+    dis.viface_create(node_name, 'if2', {'vnetwork' => "gw-#{group_idx}"})
+    pnode_idx += 1
+    if ((idx+1) % NUM_SRVR_PER_GROUP) == 0
+      group_idx += 1
+    end
+  end
+
+  GATEWAY_VNODES.each_with_index do |node_name, idx|
+    dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
+    dis.vfilesystem_create(node_name, { 'image' => FSIMG })
+    dis.viface_create(node_name, 'if0', {'vnetwork' => "gw-#{idx+1}"}) # gw-edge
+    dis.viface_create(node_name, 'if1', {'vnetwork' => "gw-gw"})
+    pnode_idx += 1
+  end
+
+  # this assumes you have a single client per edge group
+  CLIENT_VNODES.each_with_index do |node_name, idx|
+    dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
+    dis.vfilesystem_create(node_name, { 'image' => FSIMG })
+    dis.viface_create(node_name, 'if0', {'vnetwork' => "cli-#{idx+1}"})
     pnode_idx += 1
   end
 
@@ -96,15 +125,15 @@ Distem.client do |dis|
     dis.vnode_start(nodename)
   end
 
-#   sleep(5)
-#   if dis.wait_vnodes({'timeout' => 60}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
-#     puts "vnodes started successfully"
-#   else
-#     puts "vnodes are unreachable, maybe wait a little more?"
-#     exit 1
-#   end
-  # sleep(5)
-#   # allow internet access for all nodes
+  sleep(5)
+  # if dis.wait_vnodes({'timeout' => 100}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
+  #   puts "vnodes started successfully"
+  # else
+  #   puts "vnodes are unreachable, maybe wait a little more?"
+  #   exit 1
+  # end
+
+  # allow internet access for all nodes
   VNODE_LIST.each_with_index do |node, idx|
     addr = dis.viface_info(node,'if0')['address'].split('/')[0]
     dis.vnode_execute(node, "ifconfig if0 #{addr} netmask 255.252.0.0;route add default gw 10.147.255.254 dev if0")
