@@ -75,7 +75,7 @@ func newBasicNode(addr string, id string, conf *Config) *Node {
 }
 
 // NewLocalNode creates a new DHT node, initializing ID and transport
-func NewLocalNode(addr string, st Storage, conf *Config) *Node {
+func NewLocalNode(addr string, addrEdge string, st Storage, conf *Config) *Node {
 	if conf == nil {
 		conf = defaultConfig
 	}
@@ -85,7 +85,12 @@ func NewLocalNode(addr string, st Storage, conf *Config) *Node {
 	fillFTFirstNode(n)
 	n.SetPredecessor(n)
 	hostname, port := utils.SplitAddress(addr)
-	n.server = NewServer(hostname, port, n)
+	var hostnameEdge string
+	var portEdge int
+	if addrEdge != "" {
+		hostnameEdge, portEdge = utils.SplitAddress(addrEdge)
+	}
+	n.server = NewServer(hostname, port, hostnameEdge, portEdge, n)
 	n.server.RunInsecure()
 	fmt.Printf("node %s: Server is running\n", addr)
 	n.Transport = newTransport(n, nil, nil)

@@ -3,6 +3,7 @@ package dht
 import (
 	"math"
 	"math/big"
+	"strings"
 )
 
 type fingerEntry struct {
@@ -77,8 +78,6 @@ func incID(id string, idChars int) string {
 }
 
 func appendZeros(s string, length int) string {
-	for len(s) < length {
-		s = "0" + s
-	}
-	return s
+	num := length - len(s)
+	return strings.Repeat("0", num) + s
 }

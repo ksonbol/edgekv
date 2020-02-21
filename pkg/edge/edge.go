@@ -53,21 +53,25 @@ func checkError(err error) error {
 // FrontendServer used to manage edge nodes
 type FrontendServer struct {
 	pb.UnimplementedFrontendServer
-	mu       sync.Mutex
-	localSt  *clientv3.Client
-	globalSt *clientv3.Client
-	gateway  *dht.Node
-	hostname string
-	port     int
+	mu         sync.Mutex
+	localSt    *clientv3.Client
+	globalSt   *clientv3.Client
+	gateway    *dht.Node
+	hostname   string
+	port       int
+	hostnameGw string
+	portGw     int
 }
 
 // NewEdgeServer return a new edge server
-func NewEdgeServer(hostname string, port int) *FrontendServer {
+func NewEdgeServer(hostname string, port int, hostnameGw string, portGw int) *FrontendServer {
 	s := &FrontendServer{
-		localSt:  etcdclient.NewClient(true),
-		globalSt: etcdclient.NewClient(false),
-		hostname: hostname,
-		port:     port,
+		localSt:    etcdclient.NewClient(true),
+		globalSt:   etcdclient.NewClient(false),
+		hostname:   hostname,
+		port:       port,
+		hostnameGw: hostnameGw,
+		portGw:     portGw,
 	}
 	return s
 }
@@ -391,6 +395,13 @@ func (s *FrontendServer) Run(tls bool, certFile string,
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+	var lis2 net.Listener
+	if (s.hostnameGw != "") && (s.portGw != 0) {
+		lis2, err = net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostnameGw, s.portGw))
+		if err != nil {
+			log.Fatalf("failed to listen on second address: %v", err)
+		}
+	}
 	var opts []grpc.ServerOption
 	if tls {
 		// if caFile == "" {
@@ -407,7 +418,10 @@ func (s *FrontendServer) Run(tls bool, certFile string,
 	}
 	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterFrontendServer(grpcServer, s)
-	grpcServer.Serve(lis)
+	go grpcServer.Serve(lis)
+	if lis2 != nil {
+		go grpcServer.Serve(lis2)
+	}
 	return nil
 }
 

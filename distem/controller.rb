@@ -1,4 +1,4 @@
-#!/usr/bin/ruby -w
+#!/usr/bin/ruby
 
 gem 'ruby-cute', ">=0.6"
 require 'cute'
@@ -30,13 +30,17 @@ OptionParser.new do |opts|
   opts.on("-l", "--set-latency ENVIRONMENT", "Set latencies for 'cloud' or 'edge' environments") do |v|
     options[:latency] = v
   end
+
+  opts.on("-e", "--experiment NUMBER", "Run experiment with given number") do |v|
+    options[:exp] = v
+  end
 end.parse!
 
 NUM_NODES = NUM_VNODES
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
 CLUSTER_NAME = 'grisou'
-WALL_TIME = '07:15:00'
+WALL_TIME = '08:10:00'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
 SETUP_FILE = 'setup.rb'
@@ -44,6 +48,7 @@ SRVR_EXP_FILE = 'server_exp.rb' # etcd servers
 EDGE_EXP_FILE = 'edge_exp.rb'
 CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
+YCSB_COPY_FILE = 'ycsb_copy.rb'
 YCSB_EXP_FILE = 'ycsb_exp.rb'
 SET_LAT_FILE = 'set_lat.rb'
 CONF_FILE = 'conf.rb'
@@ -69,7 +74,7 @@ if options[:setup]
     # only reserve the nodes
     job = g5k.reserve(:nodes => NUM_NODES, :site => SITE_NAME,
                       :cluster => CLUSTER_NAME,
-                      :walltime => WALL_TIME, :subnets => [22,1], :type => :deploy,
+                      :walltime => WALL_TIME, :subnets => [22, NUM_VNETS], :type => :deploy,
                       # :reservation => RESERV_TIME,  # for future reservations
                       :queue => JOB_QUEUE)
                       # :keys => SSH_KEY_PATH)
@@ -125,7 +130,7 @@ if options[:setup]
   # system("bash -c 'distem-bootstrap -g --git-url https://github.com/ksonbol/distem.git -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
   # system("bash -c '/home/ksonbol/distem-bootstrap-karim -g -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
   
-  system("bash -c 'distem-bootstrap -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
+  system("bash -c 'distem-bootstrap --enable-admin-network -f #{NODEFILE} -k #{SSH_KEY_PATH} --debian-version stretch'")
 
   puts "installing ruby-cute gem on coordinator node for g5k communication"
   # since this is stored in our fs image, we probably dont need to run this any more
@@ -141,11 +146,11 @@ if options[:setup]
     puts "copied setup file"
   end
 
-  puts "Setting up the virtual network"
-  system("ssh root@#{coordinator} 'ruby #{SETUP_FILE}'")
-  if $?.exitstatus == 0
-    puts "virtual network set up successfully"
-  end
+  # puts "Setting up the virtual network"
+  # system("ssh root@#{coordinator} 'ruby #{SETUP_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "virtual network set up successfully"
+  # end
 
 else  # skipping setup step
   jobs = g5k.get_my_jobs(SITE_NAME)
@@ -162,10 +167,14 @@ if options[:play]
   %x(scp #{EDGE_EXP_FILE} root@#{coordinator}:/root)
   %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
   %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{YCSB_COPY_FILE} root@#{coordinator}:/root)
+  %x(scp #{YCSB_EXP_FILE} root@#{coordinator}:/root)
   %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
   %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
+  %x(scp play.sh root@#{coordinator}:/root)
   %x(scp -r go-ycsb/ root@#{coordinator}:/root)
   %x(scp edgekv.conf root@#{coordinator}:/root)
+  %x(ssh #{coordinator} 'chmod a+x *.rb *.sh')
 
   # out = %x(scp -r edge/ root@#{coordinator}:/root)
   # out = %x(scp -r client/ root@#{coordinator}:/root)
@@ -174,37 +183,37 @@ if options[:play]
     puts "copying completed successfully"
   end
 
-  puts "Running experiments"
+  # puts "Running experiments"
 
-puts "Starting etcd servers"
-system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "etcd servers are running"
-  end
+  # puts "Starting etcd servers"
+  # system("ssh #{coordinator} 'ruby #{SRVR_EXP_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "etcd servers are running"
+  # end
 
-  puts "Starting edge servers"
-  system("ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "edge servers are running"
-  end
+  # puts "Starting edge servers"
+  # system("ssh #{coordinator} 'ruby #{EDGE_EXP_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "edge servers are running"
+  # end
     
-  puts "Starting gateway nodes"
-  out = %x(ssh #{coordinator} 'ruby #{GW_EXP_FILE}')
-  if $?.exitstatus == 0
-    puts "gateway nodes are running"
-  end
+  # puts "Starting gateway nodes"
+  # system("ssh #{coordinator} 'ruby #{GW_EXP_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "gateway nodes are running"
+  # end
 
-  puts "Starting clients"
-  system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "clients are running"
-  end
+  # puts "Starting clients"
+  # system("ssh #{coordinator} 'ruby #{CLI_EXP_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "clients are running"
+  # end
 
-  puts "Copying ycsb files"
-  system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE}'")
-  if $?.exitstatus == 0
-    puts "YCSB files copied"
-  end
+  # puts "Copying and building YCSB files"
+  # system("ssh #{coordinator} 'ruby #{YCSB_COPY_FILE}'")
+  # if $?.exitstatus == 0
+  #   puts "YCSB files copied and built"
+  # end
 
 end
 
@@ -223,5 +232,14 @@ if options[:latency]
   system("ssh #{coordinator} 'ruby #{SET_LAT_FILE} #{env}'")
   if $?.exitstatus == 0
     puts "setting latency finished"
+  end
+end
+
+if options[:exp]
+  exp_num = options[:exp]
+  puts "Running YCSB experiment #{exp_num}"
+  system("ssh #{coordinator} 'ruby #{YCSB_EXP_FILE} #{exp_num}'")
+  if $?.exitstatus == 0
+    puts "running experiments finished"
   end
 end

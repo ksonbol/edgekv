@@ -1,4 +1,4 @@
-#!/usr/bin/ruby -w
+#!/usr/bin/ruby
 
 gem 'ruby-cute', ">=0.6"
 require 'cute'
@@ -45,9 +45,9 @@ sshkeys = {
   'public' => public_key
 }
 
+puts 'Creating virtual networks'
 # Connect to the Distem server (on http://localhost:4567 by default)
 Distem.client do |dis|
-  puts 'Creating virtual networks'
   # Start by creating the virtual network
   sub_idx = 0
   (1..NUM_GROUPS).each do |i|
@@ -57,11 +57,12 @@ Distem.client do |dis|
     sub_idx += 3
   end
   dis.vnetwork_create("gw-gw", subnet_addr[sub_idx])
+end
 
-  puts 'Creating virtual nodes'
-  
-  # vnode_idx = 0
-  # for pnode in pnodes
+puts "Vritual networks created"
+
+# vnode_idx = 0
+# for pnode in pnodes
   #   if vnode_idx >= NUM_VNODES
   #     break
   #   end
@@ -73,8 +74,8 @@ Distem.client do |dis|
   #     dis.vnode_create(VNODE_LIST[vnode_idx],
   #       {'host' => pnode,
   #       'vfilesystem' => {
-  #         'image' => FSIMG,
-  #         'shared' => false,  # todo: check if we can use a shared file system
+    #         'image' => FSIMG,
+    #         'shared' => false,  # todo: check if we can use a shared file system
   #         'path' => "/mnt/edgekv-#{i}",
   #       }
   #       }, sshkeys)
@@ -84,10 +85,12 @@ Distem.client do |dis|
   # end
   
   # put vnode1 on pnode1 (coordinator), and the rest on pnode2
-
-  # # Creating one virtual node per physical one
-  pnode_idx = 0
-  group_idx = 1
+  
+puts 'Creating virtual nodes'
+# Creating one virtual node per physical one
+pnode_idx = 0
+group_idx = 1
+Distem.client do |dis|
   SERVER_VNODES.each_with_index do |node_name, idx|
     dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
     #   dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx], 'vfilesystem' => \
@@ -101,7 +104,11 @@ Distem.client do |dis|
       group_idx += 1
     end
   end
+end
 
+puts "Created edge nodes"
+
+Distem.client do |dis|
   GATEWAY_VNODES.each_with_index do |node_name, idx|
     dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
     dis.vfilesystem_create(node_name, { 'image' => FSIMG })
@@ -109,7 +116,11 @@ Distem.client do |dis|
     dis.viface_create(node_name, 'if1', {'vnetwork' => "gw-gw"})
     pnode_idx += 1
   end
+end
 
+puts "Created gateway nodes"
+
+Distem.client do |dis|
   # this assumes you have a single client per edge group
   CLIENT_VNODES.each_with_index do |node_name, idx|
     dis.vnode_create(node_name, { 'host' => pnodes[pnode_idx] }, sshkeys)
@@ -117,15 +128,22 @@ Distem.client do |dis|
     dis.viface_create(node_name, 'if0', {'vnetwork' => "cli-#{idx+1}"})
     pnode_idx += 1
   end
+end
 
-  puts 'Starting virtual nodes'
-  sleep(2)
-  # Starting the virtual nodes using the synchronous method
+puts "Created client nodes"
+
+sleep(2)
+
+puts 'Starting virtual nodes'
+# Starting the virtual nodes using the synchronous method
+Distem.client do |dis|
   VNODE_LIST.each do |nodename|
     dis.vnode_start(nodename)
   end
+end
 
-  sleep(5)
+puts "All virtual nodes are running"
+sleep(5)
   # if dis.wait_vnodes({'timeout' => 100}) # optional opts arg: {'timeout' => 600, 'port' => 22}, timeout in seconds
   #   puts "vnodes started successfully"
   # else
@@ -133,9 +151,13 @@ Distem.client do |dis|
   #   exit 1
   # end
 
-  # allow internet access for all nodes
+# allow internet access for all nodes
+puts "enabling internet access for all nodes"
+Distem.client do |dis|
   VNODE_LIST.each_with_index do |node, idx|
-    addr = dis.viface_info(node,'if0')['address'].split('/')[0]
+    addr = dis.viface_info(node,'if0')['address'].split('/')[0] # todo: if0 should be enough here?
     dis.vnode_execute(node, "ifconfig if0 #{addr} netmask 255.252.0.0;route add default gw 10.147.255.254 dev if0")
   end
 end
+
+puts "internet access enabled for all nodes"

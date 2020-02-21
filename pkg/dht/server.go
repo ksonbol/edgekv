@@ -15,19 +15,23 @@ import (
 // Server is a DHT server
 type Server struct {
 	pb.UnimplementedBackendServer
-	mux        sync.RWMutex
-	hostname   string
-	port       int
-	node       *Node
-	grpcServer *grpc.Server
+	mux          sync.RWMutex
+	hostname     string
+	port         int
+	hostnameEdge string
+	portEdge     int
+	node         *Node
+	grpcServer   *grpc.Server
 }
 
 // NewServer return a new DHT server
-func NewServer(hostname string, port int, node *Node) *Server {
+func NewServer(hostname string, port int, hostnameEdge string, portEdge int, node *Node) *Server {
 	s := &Server{
-		hostname: hostname,
-		port:     port,
-		node:     node}
+		hostname:     hostname,
+		port:         port,
+		hostnameEdge: hostnameEdge,
+		portEdge:     portEdge,
+		node:         node}
 	return s
 }
 
@@ -36,6 +40,13 @@ func (s *Server) Run(tls bool, certFile string, keyFile string) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostname, s.port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
+	}
+	var lis2 net.Listener
+	if (s.hostnameEdge != "") && (s.portEdge != 0) {
+		lis2, err = net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostnameEdge, s.portEdge))
+		if err != nil {
+			log.Fatalf("failed to listen on second address: %v", err)
+		}
 	}
 	var opts []grpc.ServerOption
 	if tls {
@@ -54,6 +65,9 @@ func (s *Server) Run(tls bool, certFile string, keyFile string) error {
 	s.grpcServer = grpc.NewServer(opts...)
 	pb.RegisterBackendServer(s.grpcServer, s)
 	go s.grpcServer.Serve(lis)
+	if lis2 != nil {
+		go s.grpcServer.Serve(lis2)
+	}
 	return nil
 }
 

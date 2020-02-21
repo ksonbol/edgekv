@@ -1,3 +1,5 @@
+#!/usr/bin/ruby
+
 require 'distem'
 require_relative 'conf'
 
@@ -8,11 +10,15 @@ Distem.client do |dis|
         # TODO: should we give the client addresses of all nodes in the cluster or just one?
         edge_node = SERVER_VNODES[idx]
         idx += NUM_SRVR_PER_GROUP
-        edge_addr = dis.viface_info(edge_node,'if0')['address'].split('/')[0]
+        edge_addr = dis.viface_info(edge_node,'if0')['address'].split('/')[0] # if0 for edge-client comm
         node = CLIENT_VNODES[i-1]
         addr = dis.viface_info(node,'if0')['address'].split('/')[0]
         dis.vnode_execute(node, "mkdir -p #{EDGEKV_PARENT_DIR}")
-        system("scp -r -i #{SSH_KEY_PATH} edgekv/ root@#{addr}:#{EDGEKV_PARENT_DIR}")  # copy client files
+        # global_addr is in the network distem uses to communicate with all vnodes!
+        # use it only for ssh and scp purposes
+        # note: must have run distem-bootstrap --enable-admin-network
+        global_addr = dis.viface_info(node,'ifadm')['address'].split('/')[0] # special interface ifadm
+        %x(scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i #{SSH_KEY_PATH} edgekv/ root@#{global_addr}:#{EDGEKV_PARENT_DIR})  # copy client files
         if $?.exitstatus != 0
             puts "could not copy client code to node #{node}!"
         end

@@ -20,10 +20,10 @@ var (
 func main() {
 	flag.Parse()
 	fmt.Println("Starting the program")
-	node := dht.NewLocalNode(*nodeAddr, nil, nil)
-	node2 := dht.NewLocalNode(*node2Addr, nil, nil)
-	node3 := dht.NewLocalNode(*node3Addr, nil, nil)
-	node4 := dht.NewLocalNode(*node4Addr, nil, nil)
+	node := dht.NewLocalNode(*nodeAddr, "", nil, nil)
+	node2 := dht.NewLocalNode(*node2Addr, "", nil, nil)
+	node3 := dht.NewLocalNode(*node3Addr, "", nil, nil)
+	node4 := dht.NewLocalNode(*node4Addr, "", nil, nil)
 	fmt.Println("Created local nodes")
 	m := map[int]*dht.Node{1: node, 2: node2, 3: node3, 4: node4}
 	helperNode2 := dht.NewRemoteNode(node.Addr, node.ID, node2.Transport, nil)

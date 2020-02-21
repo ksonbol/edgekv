@@ -33,8 +33,10 @@ ETCD_LOCAL_PEER_PORT = 2380
 ETCD_GLOBAL_PEER_PORT = 2382
 
 EDGE_PORT = 2385
+EDGE_GW_PORT = 2395
 
 GATEWAY_PORT = 5554
+GATEWAY_EDGE_PORT = 5564
 
 EDGEKV_PARENT_DIR = '/root/go/src/github.com/ksonbol' 
 YCSB_PARENT_DIR = '/root/go/src/github.com/ksonbol'

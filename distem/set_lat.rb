@@ -3,6 +3,10 @@
 require 'distem'
 require_relative 'conf'
 
+no_threads = 100 # the number of threads to be used in each ycsb client
+single_cl_bw = 100
+total_cl_bw = no_threads * single_cl_bw
+
 raise "Usage: ruby set_lat.rb ENVIRONMENT" unless ARGV.length == 1
 
   puts "Updating vnodes latencies and bandwidths"
@@ -14,7 +18,7 @@ raise "Usage: ruby set_lat.rb ENVIRONMENT" unless ARGV.length == 1
     ee = "0.03ms"     # edge-to-edge server latency
     ee_bw = "1000mbps"
     el = "25ms"       # cloud-to-client latency
-    el_bw = "100mbps"
+    el_bw = "#{total_cl_bw}mbps"
     eg = "0.03ms"     # server-to-gateway latency
     eg_bw = "1000mbps"
     gg = "0.03ms"     # gateway-to-gateway latency
@@ -23,7 +27,7 @@ raise "Usage: ruby set_lat.rb ENVIRONMENT" unless ARGV.length == 1
     ee = "1ms"     # edge-to-edge latency
     ee_bw = "1000mbps"
     el = "2.5ms"     # edge-to-client latency
-    el_bw = "100mbps"
+    el_bw = "#{total_cl_bw}mbps"
     eg = "1ms"     # edge-to-gateway latency
     eg_bw = "750mbps"
     gg = "5ms"    # gateway-to-gateway latency
