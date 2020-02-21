@@ -52,7 +52,7 @@ Distem.client do |dis|
                 "cd #{EDGEKV_PARENT_DIR}/edgekv;export LOCAL_ENDPOINTS=#{local_endpoints} \
                 GLOBAL_ENDPOINTS=#{global_endpoints};nohup ./#{EDGE_FILE} \
                 -hostname=#{edge_cl_addr} -port=#{EDGE_PORT} -hostname_gw=#{edge_gw_addr} -port_gw=#{EDGE_GW_PORT} \
-                -gateway_addr=#{gateway_addr}:#{GATEWAY_PORT} > /root/etcdlog/edge.log  2>&1 &")
+                -gateway_addr=#{gateway_addr}:#{GATEWAY_EDGE_PORT} > /root/etcdlog/edge.log  2>&1 &")
                 # &> /root/etcdlog/edge.log &")
             puts "Edge server #{index+1} from group #{i} is running"
         end

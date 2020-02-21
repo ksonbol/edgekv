@@ -34,14 +34,14 @@ func main() {
 	fmt.Println("Connection to edge storage established")
 	st := gateway.NewStorage(cli)
 	gw := dht.NewLocalNode(*gwAddr, *gwEdgeAddr, st, nil)
-	fmt.Println("Edge node created")
+	fmt.Println("gateway node created")
 	var helperNode *dht.Node
 	if *helperAddr != "" {
 		helperNode = dht.NewRemoteNode(*helperAddr, "", gw.Transport, nil)
 	}
 	time.Sleep(2 * time.Second)
 	gw.Join(helperNode)
-	fmt.Println("Edge node running")
+	fmt.Println("gateway node running")
 	for {
 		time.Sleep(10 * time.Second)
 	}
