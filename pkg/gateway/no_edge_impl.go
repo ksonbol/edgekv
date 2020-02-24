@@ -93,6 +93,25 @@ func (s *HashMapStorage) MultiPutKV(kvs map[string]string) error {
 	return nil
 }
 
+func (s *HashMapStorage) Clear() error {
+	s.mMut.Lock()
+	s.m = make(map[string]string)
+	s.mMut.Unlock()
+	return nil
+}
+
+func (s *HashMapStorage) PrintKeys() {
+	fmt.Println(s.m)
+}
+
+func (s *HashMapStorage) PrintNumKeys() {
+	fmt.Printf("This node has %d keys\n", len(s.m))
+}
+
+func (s *HashMapStorage) GetNumKeys() int {
+	return len(s.m)
+}
+
 func (s *HashMapStorage) Close() error {
 	s.mMut.Lock()
 	s.m = nil

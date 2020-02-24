@@ -43,10 +43,12 @@ func main() {
 	gw.Join(helperNode)
 	// fmt.Println("gateway node running")
 	// fmt.Printf("Node ID: %s\n", gw.ID)
-	var key, val string
-	var err error
+	// var key, val string
+	// var err error
 	for {
 		time.Sleep(10 * time.Second)
+		// st.PrintNumKeys()
+		// st.PrintKeys()
 		// fmt.Println("Enter key to get!")
 		// fmt.Scan(&key)
 		// val, err = gw.GetKV(key)
