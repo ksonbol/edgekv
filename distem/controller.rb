@@ -40,7 +40,7 @@ NUM_NODES = NUM_VNODES
 HOSTNAME = 'g5k'  # that is the alias I used, the second alias allows accessing the site directly
 SITE_NAME = 'nancy'
 CLUSTER_NAME = 'grisou'
-WALL_TIME = '08:10:00'
+WALL_TIME = '05:00:00'
 JOB_QUEUE = 'default'  # use 'default' or 'besteffort'
 NODEFILES_DIR = "/home/ksonbol/jobs"
 SETUP_FILE = 'setup.rb'
@@ -49,6 +49,8 @@ EDGE_EXP_FILE = 'edge_exp.rb'
 CLI_EXP_FILE = 'client_exp.rb'
 GW_EXP_FILE = 'gateway_exp.rb'
 YCSB_COPY_FILE = 'ycsb_copy.rb'
+YCSB_LOAD_FILE = 'ycsb_load.rb'
+YCSB_RUN_FILE = 'ycsb_run.rb'
 YCSB_EXP_FILE = 'ycsb_exp.rb'
 SET_LAT_FILE = 'set_lat.rb'
 CONF_FILE = 'conf.rb'
@@ -168,12 +170,14 @@ if options[:play]
   %x(scp #{CLI_EXP_FILE} root@#{coordinator}:/root)
   %x(scp #{GW_EXP_FILE} root@#{coordinator}:/root)
   %x(scp #{YCSB_COPY_FILE} root@#{coordinator}:/root)
-  %x(scp #{YCSB_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{YCSB_LOAD_FILE} root@#{coordinator}:/root)
+  %x(scp #{YCSB_RUN_FILE} root@#{coordinator}:/root)
   %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
   %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
   %x(scp play.sh root@#{coordinator}:/root)
   %x(scp -r go-ycsb/ root@#{coordinator}:/root)
   %x(scp edgekv.conf root@#{coordinator}:/root)
+  %x(scp cleanup.rb root@#{coordinator}:/root)
   %x(ssh #{coordinator} 'chmod a+x *.rb *.sh')
 
   # out = %x(scp -r edge/ root@#{coordinator}:/root)
