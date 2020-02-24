@@ -53,6 +53,9 @@ YCSB_LOAD_FILE = 'ycsb_load.rb'
 YCSB_RUN_FILE = 'ycsb_run.rb'
 YCSB_EXP_FILE = 'ycsb_exp.rb'
 SET_LAT_FILE = 'set_lat.rb'
+SCALE_SETUP_FILE = 'scale_setup.rb'
+SCALE_EXP_FILE = 'scale_dht_exp.rb'
+SCALE_SET_LAT_FILE = 'scale_set_lat.rb'
 CONF_FILE = 'conf.rb'
 EDGEKV_FOLDER = "edgekv"
 DISK_PREP_SH = "disk_prep.sh"
@@ -173,6 +176,9 @@ if options[:play]
   %x(scp #{YCSB_LOAD_FILE} root@#{coordinator}:/root)
   %x(scp #{YCSB_RUN_FILE} root@#{coordinator}:/root)
   %x(scp #{SET_LAT_FILE} root@#{coordinator}:/root)
+  %x(scp #{SCALE_SETUP_FILE} root@#{coordinator}:/root)
+  %x(scp #{SCALE_EXP_FILE} root@#{coordinator}:/root)
+  %x(scp #{SCALE_SET_LAT_FILE} root@#{coordinator}:/root)
   %x(scp -r #{EDGEKV_FOLDER} root@#{coordinator}:/root)
   %x(scp play.sh root@#{coordinator}:/root)
   %x(scp -r go-ycsb/ root@#{coordinator}:/root)
