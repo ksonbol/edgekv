@@ -1,3 +1,4 @@
+#!/usr/bin/ruby
 
 gem 'ruby-cute', ">=0.6"
 require 'cute'

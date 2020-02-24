@@ -1,3 +1,5 @@
+#!/usr/bin/ruby
+
 require 'distem'
 
 num_gw = 1000

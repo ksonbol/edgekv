@@ -1,3 +1,5 @@
+#!/usr/bin/ruby
+
 require 'distem'
 require_relative 'conf'
 
@@ -25,7 +27,7 @@ Distem.client do |dis|
         if index == 0
             helper_addr = addr # use first node as helper node for all other nodes (this is set once only)
         end
-        out = %x(scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i #{SSH_KEY_PATH} edgekv/ root@#{global_address}:#{EDGEKV_PARENT_DIR})  # copy gateway files
+        out = %x(scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i #{SSH_KEY_PATH} edgekv/ root@#{global_address}:#{EDGEKV_PARENT_DIR})  # copy gateway files
         if $?.exitstatus != 0
             puts "could not copy gateway code to node #{node}!"
         end
