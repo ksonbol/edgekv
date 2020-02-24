@@ -41,6 +41,11 @@ func (s *EdgeKVStorage) RangeDelKV(start, end string) error {
 	return s.cl.RangeDel(start, end, utils.GlobalDataStr)
 }
 
+// MultiPutKV is not implemented by this storage type
+func (s *EdgeKVStorage) MultiPutKV(kvs map[string]string) error {
+	return nil
+}
+
 // Close closes the client connection to the connected edge group
 func (s *EdgeKVStorage) Close() error {
 	return s.cl.Close()

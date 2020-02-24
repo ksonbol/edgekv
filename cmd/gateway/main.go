@@ -5,10 +5,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/ksonbol/edgekv/pkg/client"
+	//"github.com/ksonbol/edgekv/pkg/client"
 	"github.com/ksonbol/edgekv/pkg/dht"
 	"github.com/ksonbol/edgekv/pkg/gateway"
 )
@@ -27,12 +26,13 @@ var (
 // run with flag -edge_addr=localhost:PORT3 -gateway_addr=localhost:PORT4 -gateway_edge_addr=localhost:PORT5 -helper_addr=localhost:PORT2 for other nodes
 func main() {
 	flag.Parse()
-	cli, err := client.NewEdgekvClient(*edgeAddress, *tls, *caFile, *serverHostOverride)
-	if err != nil {
-		log.Fatalf("Could not connect to edge group %v", err)
-	}
-	fmt.Println("Connection to edge storage established")
-	st := gateway.NewStorage(cli)
+	// cli, err := client.NewEdgekvClient(*edgeAddress, *tls, *caFile, *serverHostOverride)
+	// if err != nil {
+	// 	log.Fatalf("Could not connect to edge group %v", err)
+	// }
+	// fmt.Println("Connection to edge storage established")
+	// st := gateway.NewStorage(cli)
+	st := gateway.NewHashMapStorage()
 	gw := dht.NewLocalNode(*gwAddr, *gwEdgeAddr, st, nil)
 	fmt.Println("gateway node created")
 	var helperNode *dht.Node
@@ -41,8 +41,19 @@ func main() {
 	}
 	time.Sleep(2 * time.Second)
 	gw.Join(helperNode)
-	fmt.Println("gateway node running")
+	// fmt.Println("gateway node running")
+	// fmt.Printf("Node ID: %s\n", gw.ID)
+	var key, val string
+	var err error
 	for {
 		time.Sleep(10 * time.Second)
+		// fmt.Println("Enter key to get!")
+		// fmt.Scan(&key)
+		// val, err = gw.GetKV(key)
+		// if err != nil {
+		// 	fmt.Printf("Error finding key %s: %v\n", key, err)
+		// } else {
+		// 	fmt.Printf("Val[%s] = %s\n", key, val)
+		// }
 	}
 }

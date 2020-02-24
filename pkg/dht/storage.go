@@ -7,5 +7,6 @@ type Storage interface {
 	DelKV(key string) error
 	RangeGetKV(start, end string) (map[string]string, error)
 	RangeDelKV(start, end string) error
+	MultiPutKV(kvs map[string]string) error
 	Close() error
 }
