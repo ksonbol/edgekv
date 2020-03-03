@@ -11,20 +11,21 @@ make
 
 1. Start your etcd cluster. For a local cluster:
  
-    etcd
+    `etcd`
 
 2. Start the edge nodes, specifying at least one of the etcd endpoints in the ENDPOINTS environment variable. For exampe, for a local cluster:
     
-    ENDPOINTS="localhost:2379" ./bin/edge
+    `ENDPOINTS="localhost:2379" ./bin/edge`
 
 3. Start the gateway nodes, specifying the associated edge group address, addresses for gateway-to-gateway and gateway-to-edge communication, and the address of the helper node (if not first node in the ring).
 
-   ./bin/gateway -edge_addr=EDGE_ADDR:EDGE_PORT -gateway_addr=ADDRESS:PORT -gateway_edge_addr=ADDRESS:PORT2 for first node
-   ./bin/gateway -edge_addr=EDGE_ADDR2:EDGE_PORT2 -gateway_addr=ADDRESS2:PORT -gateway_edge_addr=ADDRESS2:PORT2 -helper_addr=ADDRESS:PORT for other nodes
+   `./bin/gateway -edge_addr=EDGE_ADDR:EDGE_PORT -gateway_addr=ADDRESS:PORT -gateway_edge_addr=ADDRESS:PORT2 for first node`
+   
+   `./bin/gateway -edge_addr=EDGE_ADDR2:EDGE_PORT2 -gateway_addr=ADDRESS2:PORT -gateway_edge_addr=ADDRESS2:PORT2 -helper_addr=ADDRESS:PORT for other nodes`
    
 4. Start the client nodes, passing the edge server address as an argument. For example:
     
-    ./bin/client -server_addr=localhost:2381
+    `./bin/client -server_addr=localhost:2381`
 
 Since this is the default value, for a local cluster, you can just run:
 
