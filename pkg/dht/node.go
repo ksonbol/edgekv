@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ksonbol/edgekv/pkg/gateway"
 	"github.com/ksonbol/edgekv/utils"
 )
 
@@ -580,12 +579,6 @@ func (n *Node) GetFTID(idx int) string {
 }
 
 func (n *Node) multiPutKV(kvs map[string]string) error {
-	// Todo: remove this after tests
-	_, ok := n.storage.(*gateway.HashMapStorage)
-	if ok {
-		// we use this to avoid rehashing with HashMapStorage put
-		return n.storage.MultiPutKV(kvs)
-	}
 	for k, v := range kvs {
 		if err := n.putKVLocal(k, v); err != nil {
 			log.Fatalf("Failed to add key %s to node %s: %v", k, n.idFmt(), err)

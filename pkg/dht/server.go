@@ -42,13 +42,12 @@ func (s *Server) Run(tls bool, certFile string, keyFile string) error {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	var lis2 net.Listener
-	// todo: uncomment this after tests
-	// if (s.hostnameEdge != "") && (s.portEdge != 0) {
-	// 	lis2, err = net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostnameEdge, s.portEdge))
-	// 	if err != nil {
-	// 		log.Fatalf("failed to listen on second address: %v", err)
-	// 	}
-	// }
+	if (s.hostnameEdge != "") && (s.portEdge != 0) {
+		lis2, err = net.Listen("tcp", fmt.Sprintf("%s:%d", s.hostnameEdge, s.portEdge))
+		if err != nil {
+			log.Fatalf("failed to listen on second address: %v", err)
+		}
+	}
 	var opts []grpc.ServerOption
 	if tls {
 		// if caFile == "" {
