@@ -1,4 +1,7 @@
 # EdgeKV
+A Go implementation of EdgeKV: a decentralized, scalable, and consistent storage system for the network edge.
+## Paper
+[EdgeKV: Decentralized, scalable, and consistent storage for the edge (Journal of Parallel and Distributed Computing)](https://www.sciencedirect.com/science/article/pii/S0743731520302884)
 
 ## Build
 ```bash
